@@ -1,0 +1,26 @@
+[project]
+name = "toxitrace"
+version = "0.2.0"
+description = "Penetration testing tool for AI agent / MCP infrastructure: finds (and later proves) cross-server confused-deputy exfiltration chains."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+keywords = ["mcp", "ai-agent", "penetration-testing", "red-team", "confused-deputy", "prompt-injection", "llm-security"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=7"]
+
+[project.scripts]
+toxitrace = "toxitrace.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

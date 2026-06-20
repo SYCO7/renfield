@@ -1,0 +1,16 @@
+{
+  "github": [
+    {"name": "read_issue", "description": "Read a GitHub issue body and its comments"},
+    {"name": "get_file_contents", "description": "Read file contents from a repository (incl. private)"},
+    {"name": "create_pr", "description": "Create a pull request"}
+  ],
+  "filesystem": [
+    {"name": "read_file", "description": "Read a file from the local filesystem"},
+    {"name": "write_file", "description": "Write a file to the local filesystem"},
+    {"name": "list_directory", "description": "List entries in a directory"}
+  ],
+  "gmail": [
+    {"name": "read_email", "description": "Read emails from the inbox"},
+    {"name": "send_email", "description": "Send an email to an arbitrary recipient"}
+  ]
+}
