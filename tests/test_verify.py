@@ -1,11 +1,11 @@
 import sys
 from pathlib import Path
 
-from sycophant.classify import classify_servers
-from sycophant.graph import build_chains
-from sycophant.live import enumerate_tools
-from sycophant.models import Server
-from sycophant.verify import verify_chain
+from renfield.classify import classify_servers
+from renfield.graph import build_chains
+from renfield.live import enumerate_tools
+from renfield.models import Server
+from renfield.verify import verify_chain
 
 VULN = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_server.py")
 

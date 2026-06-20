@@ -1,6 +1,6 @@
-"""Sycophant — penetration testing for AI agents.
+"""Renfield — penetration testing for AI agents.
 
-Does your AI agent say yes to attackers? Sycophant points at an agent's own MCP
+Does your AI agent say yes to attackers? Renfield points at an agent's own MCP
 tool mesh, finds the untrusted-source -> sensitive-read -> external-sink chains
 that let injected content steer the agent into stealing and leaking data across
 server boundaries (the cross-server confused-deputy / lethal-trifecta class),
@@ -12,4 +12,4 @@ Pipeline: config ingest -> live MCP enumeration -> capability graph -> candidate
 chains -> dynamic verification (sandbox + side-effect oracle) -> report.
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"

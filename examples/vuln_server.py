@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliberately-VULNERABLE MCP server — sycophant test target / lab.
+"""Deliberately-VULNERABLE MCP server — renfield test target / lab.
 
 One script, three roles (TOXI_ROLE = inbox | files | mailer | all). Run three
 instances to model a cross-server confused-deputy stack:
@@ -14,7 +14,7 @@ Env:
     TOXI_EGRESS   path the sink writes to (default: <sandbox>/egress.log)
 
 This is intentionally insecure (no path confinement, obeys any instruction).
-Use only inside sycophant's sandbox. Never expose it on a network.
+Use only inside renfield's sandbox. Never expose it on a network.
 """
 
 import json

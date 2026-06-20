@@ -17,7 +17,7 @@ venv/
 htmlcov/
 
 # toxitrace runtime
-toxitrace-*/        # leftover sandbox dirs (should self-clean, belt-and-braces)
+renfield-*/        # leftover sandbox dirs (should self-clean, belt-and-braces)
 *.egress.log
 
 # Editors / OS

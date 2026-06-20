@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from sycophant.classify import classify_servers
-from sycophant.config import attach_tools, load_config, load_tools_manifest
-from sycophant.graph import build_chains
+from renfield.classify import classify_servers
+from renfield.config import attach_tools, load_config, load_tools_manifest
+from renfield.graph import build_chains
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 

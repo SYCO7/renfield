@@ -1,5 +1,5 @@
-from sycophant.classify import classify_tool
-from sycophant.models import Capability, Tool
+from renfield.classify import classify_tool
+from renfield.models import Capability, Tool
 
 
 def cap(name, desc=""):

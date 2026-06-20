@@ -1,7 +1,7 @@
 """Command-line entry point.
 
-    sycophant scan   <mcp-config.json> [--tools <manifest.json> | --live] [--min-severity LOW]
-    sycophant verify <mcp-config.json> [--max N]   # live-enumerate, then PROVE criticals
+    renfield scan   <mcp-config.json> [--tools <manifest.json> | --live] [--min-severity LOW]
+    renfield verify <mcp-config.json> [--max N]   # live-enumerate, then PROVE criticals
 """
 
 from __future__ import annotations
@@ -41,23 +41,28 @@ def _run_scan(args: argparse.Namespace) -> int:
 
 
 def _make_driver(args):
-    if args.driver == "llm":
-        from .agent import LLMAgent
-        return LLMAgent(model=args.model)
-    return None  # default: deterministic ScriptedAgent
+    if args.driver == "scripted":
+        return None  # default: deterministic ScriptedAgent
+    from .agent import LLMAgent
+    from .providers import build_provider
+    provider = build_provider(
+        args.driver, model=args.model, api_key=args.api_key,
+        base_url=args.base_url, host=args.ollama_host,
+    )
+    return LLMAgent(provider=provider)
 
 
 def _run_verify(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
     driver = _make_driver(args)
-    driver_label = f"llm:{args.model}" if args.driver == "llm" else "scripted"
+    driver_label = "scripted" if args.driver == "scripted" else f"{args.driver}:{args.model or 'default'}"
 
     print("=" * 66)
-    print("sycophant — dynamic verification (v0.3)")
+    print("renfield — dynamic verification (v0.4)")
     print("=" * 66)
     print(f"driver: {driver_label}")
-    if args.driver == "llm":
+    if args.driver != "scripted":
         print("  (a real model decides whether to walk the chain — measures actual"
               " susceptibility)")
     if not criticals:
@@ -87,7 +92,7 @@ def _run_verify(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="sycophant",
+        prog="renfield",
         description="Find and prove cross-server confused-deputy exfiltration "
                     "chains in an AI agent's MCP tool mesh.",
     )
@@ -106,12 +111,25 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--max", type=int, default=3, help="max chains to verify")
     verify.add_argument(
         "--driver",
-        choices=["scripted", "llm"],
+        choices=["scripted", "ollama", "anthropic", "openai"],
         default="scripted",
-        help="scripted = deterministic walk (no LLM); llm = real Ollama model decides",
+        help="scripted = deterministic walk (no LLM); ollama/anthropic/openai = a "
+             "real model decides (measures susceptibility)",
     )
     verify.add_argument(
-        "--model", default="qwen2.5:7b", help="Ollama model for --driver llm"
+        "--model",
+        help="model id (default per driver: ollama=qwen2.5:7b, anthropic=claude-opus-4-8, openai=gpt-4o)",
+    )
+    verify.add_argument(
+        "--api-key",
+        help="API key (else read from ANTHROPIC_API_KEY / OPENAI_API_KEY env)",
+    )
+    verify.add_argument(
+        "--base-url",
+        help="OpenAI-compatible base URL (OpenRouter / Groq / Together / local vLLM)",
+    )
+    verify.add_argument(
+        "--ollama-host", help="Ollama host (default http://localhost:11434)"
     )
     verify.set_defaults(func=_run_verify)
     return parser

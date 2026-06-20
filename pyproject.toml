@@ -1,7 +1,7 @@
 [project]
-name = "sycophant"
-version = "0.3.0"
-description = "Sycophant — penetration testing for AI agents: finds and PROVES cross-server confused-deputy exfiltration chains in an MCP tool mesh, then measures whether a real LLM falls for them."
+name = "renfield"
+version = "0.4.0"
+description = "Renfield — penetration testing for AI agents: finds and PROVES cross-server confused-deputy exfiltration chains in an MCP tool mesh, then measures whether a real LLM falls for them."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
@@ -15,11 +15,14 @@ classifiers = [
 dependencies = []
 
 [project.optional-dependencies]
+anthropic = ["anthropic>=0.40"]   # Claude driver
+openai = ["openai>=1.0"]          # OpenAI / Codex / OpenAI-compatible driver
+all = ["anthropic>=0.40", "openai>=1.0"]
 dev = ["pytest>=7"]
 
 [project.scripts]
-syco = "sycophant.cli:main"
-sycophant = "sycophant.cli:main"
+ren = "renfield.cli:main"
+renfield = "renfield.cli:main"
 
 [build-system]
 requires = ["setuptools>=61"]

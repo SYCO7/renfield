@@ -12,7 +12,7 @@ _BADGE = {"CRITICAL": "[CRIT]", "HIGH": "[HIGH]", "MEDIUM": "[MED ]", "LOW": "[L
 def render(servers: list[Server], chains: list[ToxicChain], mode: str = "static") -> str:
     out: list[str] = []
     out.append(_RULE)
-    out.append(f"sycophant — MCP agent capability assessment ({mode} enumeration)")
+    out.append(f"renfield — MCP agent capability assessment ({mode} enumeration)")
     out.append(_RULE)
 
     tools = [t for s in servers for t in s.tools]
@@ -48,7 +48,7 @@ def render(servers: list[Server], chains: list[ToxicChain], mode: str = "static"
 
     out.append(_THIN)
     out.append("NOTE: `scan` reports *candidate* chains from capability analysis.")
-    out.append("      Run `sycophant verify` to PROVE a chain by planting a payload")
+    out.append("      Run `renfield verify` to PROVE a chain by planting a payload")
     out.append("      and observing a real side effect (file read / egress / token "
                "reuse).")
     out.append("      Only assess agent stacks you own or are authorized to test.")
