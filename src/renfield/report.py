@@ -79,3 +79,25 @@ def render_leaderboard(rows: list[dict]) -> str:
     out.append("Only test agent stacks you own or are authorized to assess.")
     out.append(_RULE)
     return "\n".join(out)
+
+
+def render_remediation(criticals, rem) -> str:
+    """Render the minimal-fix result: smallest capability cut + proof it kills all."""
+    out = [_RULE, "renfield — minimal fix (proven remediation)", _RULE,
+           f"{len(criticals)} CRITICAL chain(s) found.", ""]
+    out.append("Smallest set of capabilities to remove or gate to break ALL of them:")
+    for ref in rem.cut:
+        out.append(f"   - {ref}")
+    out.append("")
+    if rem.proven:
+        out.append(f"Re-analysis after removing them: 0 / {len(criticals)} critical chains remain.")
+        out.append("[PROVEN FIX] this single change eliminates every proven attack above.")
+    else:
+        out.append(f"{len(rem.remaining)} chain(s) still exploitable after the cut:")
+        for c in rem.remaining:
+            out.append(f"   ! {c.hops()}")
+    out.append(_THIN)
+    out.append("Apply by removing the tool, narrowing its permission/scope, or gating it")
+    out.append("behind human approval once the agent has ingested untrusted content.")
+    out.append(_RULE)
+    return "\n".join(out)

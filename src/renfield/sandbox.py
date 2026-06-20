@@ -1,9 +1,13 @@
-"""Disposable sandbox for dynamic verification.
+"""Disposable evidence workspace for dynamic verification.
 
 Each run gets a throwaway temp dir holding a unique CANARY secret and an egress
 capture file. The oracle later proves exploitation iff the canary value lands in
 the egress sink — i.e. data actually crossed from a sensitive read to an
 external sink, not merely "the model said something bad".
+
+NOTE: this is an *evidence* workspace, not a security isolation boundary. It does
+not contain a hostile MCP server. To test untrusted third-party servers, run
+Renfield inside a throwaway VM or container.
 """
 
 from __future__ import annotations

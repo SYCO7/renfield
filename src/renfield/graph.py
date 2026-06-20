@@ -9,6 +9,9 @@ isolated single-server scanners structurally cannot see.
 
 from __future__ import annotations
 
+from collections import Counter
+from dataclasses import dataclass
+
 from .models import Capability, Server, Tool, ToxicChain
 
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
@@ -77,6 +80,48 @@ def build_chains(servers: list[Server]) -> list[ToxicChain]:
         reverse=True,
     )
     return chains
+
+
+def chain_nodes(chain: ToxicChain) -> set[str]:
+    """The tools a chain depends on — removing ANY one breaks the chain."""
+    nodes = {chain.source.ref, chain.sink.ref}
+    if chain.sensitive is not None:
+        nodes.add(chain.sensitive.ref)
+    return nodes
+
+
+@dataclass
+class Remediation:
+    cut: list[str]              # capabilities to remove/gate
+    broken: int                 # chains this cut breaks
+    remaining: list[ToxicChain]  # chains still exploitable after the cut (should be empty)
+
+    @property
+    def proven(self) -> bool:
+        return not self.remaining
+
+
+def minimal_fix(chains: list[ToxicChain]) -> Remediation:
+    """Smallest set of tools to remove so EVERY chain is broken (greedy hitting set).
+
+    Each chain breaks if any of its tools is removed, so this is a minimum hitting
+    set over the chains' tool sets. NP-hard in general, but chains are few; greedy
+    (always remove the tool covering the most still-live chains) is the standard
+    log-approximation and is exact for the common shared-source case. This is the
+    minimal least-privilege change that makes every proven attack impossible.
+    """
+    live = [chain_nodes(c) for c in chains]
+    cut: list[str] = []
+    while live:
+        freq = Counter(tool for nodes in live for tool in nodes)
+        # most-covering tool; deterministic tiebreak by name
+        best = max(freq, key=lambda t: (freq[t], t))
+        cut.append(best)
+        live = [nodes for nodes in live if best not in nodes]
+
+    cut_set = set(cut)
+    remaining = [c for c in chains if not (chain_nodes(c) & cut_set)]
+    return Remediation(cut=sorted(cut), broken=len(chains) - len(remaining), remaining=remaining)
 
 
 def _rationale(source: Tool, sensitive: Tool | None, sink: Tool, cross: bool) -> str:

@@ -54,13 +54,18 @@ ren scan    my-agent.json --live          # map the tool mesh, find candidate ch
 ren verify  my-agent.json                 # PROVE each chain by a real side effect
 ren verify  my-agent.json --driver ollama # measure if YOUR model actually falls for it
 ren compare my-agent.json --with ollama:qwen2.5:7b --with openai:gpt-4o   # leaderboard
+ren remediate my-agent.json                                 # smallest fix that kills all chains
 ren verify  my-agent.json --format sarif -o renfield.sarif   # upload to code scanning
 ```
 
 Renfield does not grade the model's text or check "was the tool called." It runs the
-chain in a disposable sandbox and confirms harm by an **observed side effect** — a
-canary secret physically leaving over the network, or an attacker OAuth consent being
-granted. If it can't prove harm, it doesn't report it.
+chain in a disposable temp workspace and confirms harm by an **observed side effect**
+— a canary secret physically leaving over the network, or an attacker OAuth consent
+being granted. If it can't prove harm, it doesn't report it. Then `remediate` computes
+the smallest set of capabilities to remove that breaks **every** proven chain.
+
+> The temp workspace is for evidence, **not isolation** — it does not contain a
+> hostile MCP server. Test untrusted third-party servers inside a VM or container.
 
 ## Reproduce it in 60 seconds (bundled lab, no keys)
 
@@ -85,6 +90,9 @@ deliberately-vulnerable lab, then print a model susceptibility leaderboard.
 - **Scope OAuth grants narrowly** and never let an agent auto-approve consent.
 - **Gate in CI.** Run `ren verify --format sarif` on every change to the agent's
   tool/MCP config; fail the build on a proven critical chain.
+- **Ask Renfield for the minimal fix.** `ren remediate my-agent.json` prints the
+  smallest set of capabilities to remove that breaks every proven chain.
 
 > ⚠️ Only run Renfield against agent stacks you own or are explicitly authorized to
-> test. The dynamic engine executes real exploit chains in a sandbox.
+> test. The dynamic engine executes real exploit chains in a disposable temp
+> workspace — that is for evidence, not isolation. Test untrusted servers in a VM.

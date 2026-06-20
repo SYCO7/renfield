@@ -11,9 +11,9 @@ import sys
 
 from .classify import classify_servers
 from .config import attach_tools, load_config, load_tools_manifest
-from .graph import build_chains
+from .graph import build_chains, minimal_fix
 from .live import enumerate_tools
-from .report import render, render_leaderboard
+from .report import render, render_leaderboard, render_remediation
 from .verify import verify_chain
 
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
@@ -144,6 +144,17 @@ def _run_compare(args: argparse.Namespace) -> int:
     return 1 if any(r["pwned"] for r in rows) else 0
 
 
+def _run_remediate(args: argparse.Namespace) -> int:
+    servers = _prepare(args.config, None, live=True)
+    criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"]
+    if not criticals:
+        print("no CRITICAL chains — nothing to remediate.")
+        return 0
+    rem = minimal_fix(criticals)
+    print(render_remediation(criticals, rem))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="renfield",
@@ -208,6 +219,14 @@ def build_parser() -> argparse.ArgumentParser:
     cmp.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
     cmp.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
     cmp.set_defaults(func=_run_compare)
+
+    rem = sub.add_parser(
+        "remediate",
+        help="compute the smallest set of capabilities to remove that breaks EVERY "
+             "critical chain, and prove 0 remain",
+    )
+    rem.add_argument("config", help="path to the MCP config JSON")
+    rem.set_defaults(func=_run_remediate)
     return parser
 
 

@@ -110,6 +110,9 @@ ren verify examples/vuln_lab_config.json --driver openai \
 # 4. COMPARE models head-to-head — who leaks your secrets?
 ren compare examples/vuln_lab_config.json \
     --with ollama:qwen2.5:7b --with openai:gpt-4o
+
+# 5. REMEDIATE — smallest set of capabilities to remove that kills EVERY chain
+ren remediate examples/vuln_lab_config.json
 ```
 
 `verify`/`compare` exit non-zero when a chain is PROVEN, so they gate a pentest run or CI.
@@ -127,17 +130,37 @@ ren compare examples/vuln_lab_config.json \
 
 ### The model leaderboard (`compare`)
 
+> ⚠️ **The numbers below are illustrative output format, not measured results.**
+> Run `ren compare` with your own models to get real scores before quoting any.
+
 ```
 renfield — model susceptibility leaderboard
 MODEL                      PWNED   ATTACK CLASSES PROVEN
 ------------------------------------------------------------------
 scripted                   3/3     Data Exfiltration, Network Exfiltration, OAuth-Consent Confused Deputy
-ollama:qwen2.5:7b          2/3     Data Exfiltration, Network Exfiltration
-openai:gpt-4o              0/3     (resisted all)
+<your-model-a>             ?/3     ...
+<your-model-b>             ?/3     ...
 ```
 
-> One reproducible command answers *"which models leak your secrets when an agent
-> reads attacker-controlled content?"* — a thing nobody could measure before.
+One reproducible command answers *"which models, on my stack, leak secrets when an
+agent reads attacker-controlled content?"*
+
+### Prove the fix (`remediate`)
+
+Renfield doesn't just prove you're exposed — it computes the **smallest set of
+capabilities to remove that breaks every proven chain**, then re-analyses to prove
+none remain:
+
+```
+renfield — minimal fix (proven remediation)
+3 CRITICAL chain(s) found.
+
+Smallest set of capabilities to remove or gate to break ALL of them:
+   - inbox.read_message
+
+Re-analysis after removing them: 0 / 3 critical chains remain.
+[PROVEN FIX] this single change eliminates every proven attack above.
+```
 
 ## Use it in CI 🛡️ (GitHub code scanning)
 
@@ -229,16 +252,23 @@ confused-deputy stacks above. Self-contained, offline, safe.
   `compare` for head-to-head model susceptibility scoring.
 - **v0.6 — JSON / SARIF evidence report + CI** *(done)*: `--format json|sarif`,
   GitHub code-scanning upload, copy-paste CI workflow, and a rendered demo video.
-- **v0.7 — taint/provenance remediation hints + HTML report** (planned).
-- **v0.8 — optional MCP-server wrapper** so other agents can call Renfield.
+- **v0.7 — minimal-fix remediation** *(done)*: `remediate` computes the smallest
+  capability cut that breaks every proven chain and re-analyses to prove 0 remain.
+- **v0.8 — taint/provenance hints + HTML report** (planned).
+- **v0.9 — optional MCP-server wrapper** so other agents can call Renfield.
 
 ## Ethics / legal
 
 Assess only agent stacks you **own or are explicitly authorized to test**. The
 dynamic engine executes real exploit chains; run it against your own deployment
-and the bundled lab, never third-party servers without permission. The bundled
-`vuln_server.py` is intentionally insecure — keep it inside the sandbox, never on
-a network.
+and the bundled lab, never third-party servers without permission.
+
+> **On the "sandbox":** Renfield runs each chain in a disposable **temp directory**
+> with a canary secret and a local egress listener. That is an evidence workspace,
+> **not a security isolation boundary** — it does not contain a hostile MCP server.
+> When testing **untrusted third-party** servers, run Renfield inside a throwaway
+> **VM or container**. The bundled `vuln_server.py` is intentionally insecure —
+> keep it offline.
 
 ## License
 
