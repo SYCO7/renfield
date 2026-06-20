@@ -56,10 +56,25 @@ def _run_verify(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
     driver = _make_driver(args)
-    driver_label = "scripted" if args.driver == "scripted" else f"{args.driver}:{args.model or 'default'}"
+    verdicts = [verify_chain(c, servers, driver=driver) for c in criticals]
+    proven = sum(1 for v in verdicts if v.exploited)
 
+    # machine-readable output for CI / GitHub code scanning
+    if args.format in ("json", "sarif"):
+        from .outputs import render as render_out
+        text = render_out(verdicts, args.config, args.format)
+        if args.out:
+            with open(args.out, "w") as f:
+                f.write(text)
+            print(f"wrote {args.format} ({proven} finding(s)) -> {args.out}", file=sys.stderr)
+        else:
+            print(text)
+        return 1 if proven else 0
+
+    # human-readable text
+    driver_label = "scripted" if args.driver == "scripted" else f"{args.driver}:{args.model or 'default'}"
     print("=" * 66)
-    print("renfield — dynamic verification (v0.5)")
+    print("renfield — dynamic verification (v0.6)")
     print("=" * 66)
     print(f"driver: {driver_label}")
     if args.driver != "scripted":
@@ -70,13 +85,10 @@ def _run_verify(args: argparse.Namespace) -> int:
         return 0
     print(f"verifying {len(criticals)} critical chain(s) by observed side effect...\n")
 
-    proven = 0
-    for i, chain in enumerate(criticals, 1):
-        verdict = verify_chain(chain, servers, driver=driver)
+    for i, verdict in enumerate(verdicts, 1):
         status = "PROVEN" if verdict.exploited else "NOT PROVEN"
-        proven += int(verdict.exploited)
         klass = f"  [{verdict.attack_class}]" if verdict.exploited else ""
-        print(f"[{status}] #{i}{klass}  {chain.hops()}")
+        print(f"[{status}] #{i}{klass}  {verdict.chain.hops()}")
         for step in verdict.trace:
             observed = step["observed"].replace("\n", " ")[:70]
             print(f"          {step['step']:<9} {step['tool']:<22} -> {observed}")
@@ -174,6 +186,11 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--ollama-host", help="Ollama host (default http://localhost:11434)"
     )
+    verify.add_argument(
+        "--format", choices=["text", "json", "sarif"], default="text",
+        help="output format. sarif uploads to GitHub code scanning; json for CI",
+    )
+    verify.add_argument("-o", "--out", help="write json/sarif to this file")
     verify.set_defaults(func=_run_verify)
 
     cmp = sub.add_parser(

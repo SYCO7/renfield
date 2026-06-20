@@ -14,6 +14,10 @@ by real side effect, and measures whether a live LLM actually falls for it.
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![deps](https://img.shields.io/badge/runtime%20deps-0-brightgreen)](pyproject.toml)
 
+<img src="docs/demo.gif" alt="renfield demo — scan the agent's MCP mesh, prove 3 attack classes by real side effect, rank model susceptibility" width="100%">
+
+📹 **[Watch the demo](docs/demo.mp4)** · 📄 **[Proof of Concept & use case](docs/POC.md)**
+
 </div>
 
 ---
@@ -135,6 +139,37 @@ openai:gpt-4o              0/3     (resisted all)
 > One reproducible command answers *"which models leak your secrets when an agent
 > reads attacker-controlled content?"* — a thing nobody could measure before.
 
+## Use it in CI 🛡️ (GitHub code scanning)
+
+Renfield emits **SARIF**, so proven exploit chains land in your repo's **Security
+tab** and as inline PR annotations. Drop this in `.github/workflows/agent-security.yml`:
+
+```yaml
+name: agent-security
+on: [pull_request]
+permissions:
+  security-events: write          # required to upload SARIF
+jobs:
+  renfield:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install git+https://github.com/SYCO7/renfield
+      - name: Prove agent exploit chains
+        run: ren verify path/to/mcp-config.json --format sarif -o renfield.sarif || true
+      - uses: github/codeql-action/upload-sarif@v3
+        with: { sarif_file: renfield.sarif }
+```
+
+Machine-readable output for any pipeline:
+
+```bash
+ren verify my-agent.json --format json   -o renfield.json    # CI / dashboards
+ren verify my-agent.json --format sarif  -o renfield.sarif   # GitHub code scanning
+```
+
 ## The LLM susceptibility test — bring your own model
 
 This is the part nobody else does. Instead of *assuming* an agent obeys, Renfield
@@ -192,8 +227,10 @@ confused-deputy stacks above. Self-contained, offline, safe.
 - **v0.5 — egress capture + OAuth-consent confused deputy + model leaderboard**
   *(done)*: real outbound-HTTP proof, the least-tooled confused-deputy class, and
   `compare` for head-to-head model susceptibility scoring.
-- **v0.6 — JSON / SARIF evidence report** mapped to OWASP MCP / Agentic Top 10.
-- **v0.7 — optional MCP-server wrapper** so other agents can call Renfield.
+- **v0.6 — JSON / SARIF evidence report + CI** *(done)*: `--format json|sarif`,
+  GitHub code-scanning upload, copy-paste CI workflow, and a rendered demo video.
+- **v0.7 — taint/provenance remediation hints + HTML report** (planned).
+- **v0.8 — optional MCP-server wrapper** so other agents can call Renfield.
 
 ## Ethics / legal
 
