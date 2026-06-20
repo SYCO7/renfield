@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from toxitrace.config import attach_tools, load_config, load_tools_manifest
+from sycophant.config import attach_tools, load_config, load_tools_manifest
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 

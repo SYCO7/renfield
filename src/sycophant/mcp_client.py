@@ -94,7 +94,7 @@ class MCPStdioClient:
             {
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {},
-                "clientInfo": {"name": "toxitrace", "version": "0.2.0"},
+                "clientInfo": {"name": "sycophant", "version": "0.2.0"},
             },
         )
         self.notify("notifications/initialized")

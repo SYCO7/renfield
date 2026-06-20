@@ -35,6 +35,7 @@ def enumerate_tools(servers: list[Server]) -> list[EnumResult]:
                             server=server.name,
                             name=td.get("name", ""),
                             description=td.get("description", ""),
+                            schema=td.get("inputSchema", {}) or {},
                         )
                     )
             finally:

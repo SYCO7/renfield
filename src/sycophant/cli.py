@@ -1,7 +1,7 @@
 """Command-line entry point.
 
-    toxitrace scan   <mcp-config.json> [--tools <manifest.json> | --live] [--min-severity LOW]
-    toxitrace verify <mcp-config.json> [--max N]   # live-enumerate, then PROVE criticals
+    sycophant scan   <mcp-config.json> [--tools <manifest.json> | --live] [--min-severity LOW]
+    sycophant verify <mcp-config.json> [--max N]   # live-enumerate, then PROVE criticals
 """
 
 from __future__ import annotations
@@ -40,13 +40,26 @@ def _run_scan(args: argparse.Namespace) -> int:
     return 1 if any(c.severity == "CRITICAL" for c in chains) else 0
 
 
+def _make_driver(args):
+    if args.driver == "llm":
+        from .agent import LLMAgent
+        return LLMAgent(model=args.model)
+    return None  # default: deterministic ScriptedAgent
+
+
 def _run_verify(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
+    driver = _make_driver(args)
+    driver_label = f"llm:{args.model}" if args.driver == "llm" else "scripted"
 
     print("=" * 66)
-    print("toxitrace — dynamic verification (v0.2)")
+    print("sycophant — dynamic verification (v0.3)")
     print("=" * 66)
+    print(f"driver: {driver_label}")
+    if args.driver == "llm":
+        print("  (a real model decides whether to walk the chain — measures actual"
+              " susceptibility)")
     if not criticals:
         print("no CRITICAL cross-server chains to verify.")
         return 0
@@ -54,7 +67,7 @@ def _run_verify(args: argparse.Namespace) -> int:
 
     proven = 0
     for i, chain in enumerate(criticals, 1):
-        verdict = verify_chain(chain, servers)
+        verdict = verify_chain(chain, servers, driver=driver)
         status = "PROVEN" if verdict.exploited else "NOT PROVEN"
         proven += int(verdict.exploited)
         print(f"[{status}] #{i}  {chain.hops()}")
@@ -74,7 +87,7 @@ def _run_verify(args: argparse.Namespace) -> int:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="toxitrace",
+        prog="sycophant",
         description="Find and prove cross-server confused-deputy exfiltration "
                     "chains in an AI agent's MCP tool mesh.",
     )
@@ -91,6 +104,15 @@ def build_parser() -> argparse.ArgumentParser:
     verify = sub.add_parser("verify", help="live-enumerate, then PROVE critical chains")
     verify.add_argument("config", help="path to the MCP config JSON")
     verify.add_argument("--max", type=int, default=3, help="max chains to verify")
+    verify.add_argument(
+        "--driver",
+        choices=["scripted", "llm"],
+        default="scripted",
+        help="scripted = deterministic walk (no LLM); llm = real Ollama model decides",
+    )
+    verify.add_argument(
+        "--model", default="qwen2.5:7b", help="Ollama model for --driver llm"
+    )
     verify.set_defaults(func=_run_verify)
     return parser
 

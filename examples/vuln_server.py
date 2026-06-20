@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Deliberately-VULNERABLE MCP server — toxitrace test target / lab.
+"""Deliberately-VULNERABLE MCP server — sycophant test target / lab.
 
 One script, three roles (TOXI_ROLE = inbox | files | mailer | all). Run three
 instances to model a cross-server confused-deputy stack:
@@ -14,7 +14,7 @@ Env:
     TOXI_EGRESS   path the sink writes to (default: <sandbox>/egress.log)
 
 This is intentionally insecure (no path confinement, obeys any instruction).
-Use only inside toxitrace's sandbox. Never expose it on a network.
+Use only inside sycophant's sandbox. Never expose it on a network.
 """
 
 import json
@@ -25,24 +25,40 @@ ROLE = os.environ.get("TOXI_ROLE", "all")
 SANDBOX = os.environ.get("TOXI_SANDBOX", os.getcwd())
 EGRESS = os.environ.get("TOXI_EGRESS", os.path.join(SANDBOX, "egress.log"))
 
+def _obj(props, required=()):
+    return {"type": "object", "properties": props, "required": list(required)}
+
+
 TOOLDEFS = {
-    "read_message": ("Read an incoming message from the inbox", "inbox"),
-    "read_file": ("Read a file from the local filesystem", "files"),
-    "send_email": ("Send an email to a recipient", "mailer"),
+    "read_message": (
+        "Read the latest incoming message from the inbox",
+        "inbox",
+        _obj({}),
+    ),
+    "read_file": (
+        "Read a file from the local filesystem",
+        "files",
+        _obj({"path": {"type": "string", "description": "path to read"}}, ["path"]),
+    ),
+    "send_email": (
+        "Send an email to a recipient",
+        "mailer",
+        _obj(
+            {
+                "to": {"type": "string", "description": "recipient address"},
+                "body": {"type": "string", "description": "email body"},
+            },
+            ["to", "body"],
+        ),
+    ),
 }
 
 
 def tools_for_role():
     out = []
-    for name, (desc, role) in TOOLDEFS.items():
+    for name, (desc, role, schema) in TOOLDEFS.items():
         if ROLE in ("all", role):
-            out.append(
-                {
-                    "name": name,
-                    "description": desc,
-                    "inputSchema": {"type": "object", "properties": {}},
-                }
-            )
+            out.append({"name": name, "description": desc, "inputSchema": schema})
     return out
 
 

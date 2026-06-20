@@ -1,8 +1,8 @@
 import sys
 from pathlib import Path
 
-from toxitrace.live import enumerate_tools
-from toxitrace.models import Server
+from sycophant.live import enumerate_tools
+from sycophant.models import Server
 
 VULN = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_server.py")
 

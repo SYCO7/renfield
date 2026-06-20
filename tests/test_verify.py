@@ -1,11 +1,11 @@
 import sys
 from pathlib import Path
 
-from toxitrace.classify import classify_servers
-from toxitrace.graph import build_chains
-from toxitrace.live import enumerate_tools
-from toxitrace.models import Server
-from toxitrace.verify import verify_chain
+from sycophant.classify import classify_servers
+from sycophant.graph import build_chains
+from sycophant.live import enumerate_tools
+from sycophant.models import Server
+from sycophant.verify import verify_chain
 
 VULN = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_server.py")
 

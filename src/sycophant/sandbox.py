@@ -25,7 +25,7 @@ class Sandbox:
 
 
 def create_sandbox() -> Sandbox:
-    root = tempfile.mkdtemp(prefix="toxitrace-")
+    root = tempfile.mkdtemp(prefix="sycophant-")
     canary = f"CANARY-{uuid.uuid4().hex}"
     with open(os.path.join(root, "secret.txt"), "w") as f:
         f.write(canary)

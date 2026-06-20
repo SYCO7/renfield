@@ -1,5 +1,5 @@
-from toxitrace.classify import classify_tool
-from toxitrace.models import Capability, Tool
+from sycophant.classify import classify_tool
+from sycophant.models import Capability, Tool
 
 
 def cap(name, desc=""):

@@ -21,6 +21,7 @@ class Tool:
     name: str
     description: str = ""
     capabilities: set[Capability] = field(default_factory=set)
+    schema: dict = field(default_factory=dict)  # MCP inputSchema (for LLM tool-calling)
 
     @property
     def ref(self) -> str:
