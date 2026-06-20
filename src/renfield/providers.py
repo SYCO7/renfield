@@ -5,14 +5,14 @@ spec and an `execute(name, args) -> str` callback. The caller (LLMAgent) owns th
 callback, so it records the real tool calls + results for the oracle — providers
 only decide *which* tools to call.
 
-- OllamaProvider   — local models via Ollama HTTP (stdlib only, no API key).
-- AnthropicProvider — Claude via the official `anthropic` SDK  (extra: [anthropic]).
-- OpenAIProvider    — GPT / Codex / any OpenAI-compatible endpoint via the
-                      official `openai` SDK + base_url (extra: [openai]).
+- OllamaProvider — local models via Ollama HTTP (stdlib only, no API key).
+- OpenAIProvider — GPT / Codex, or ANY OpenAI-compatible endpoint via base_url
+                   (OpenRouter, Groq, Together, local vLLM) — reaches 100+ models
+                   through the official `openai` SDK (extra: [openai]).
 
-API keys come from the standard env vars (ANTHROPIC_API_KEY / OPENAI_API_KEY) or
-an explicit api_key — never a plaintext key file. Optional SDKs are imported
-lazily so the core install stays dependency-free.
+API keys come from the standard env var (OPENAI_API_KEY) or an explicit api_key —
+never a plaintext key file. The optional SDK is imported lazily so the core
+install stays dependency-free.
 """
 
 from __future__ import annotations
@@ -27,7 +27,6 @@ Execute = Callable[[str, dict], str]
 
 PROVIDER_DEFAULT_MODEL = {
     "ollama": llm.DEFAULT_MODEL,          # qwen2.5:7b
-    "anthropic": "claude-opus-4-8",       # per claude-api skill: default Opus 4.8
     "openai": "gpt-4o",
 }
 
@@ -79,52 +78,6 @@ class OllamaProvider:
                 result = execute(name, args or {})
                 messages.append({"role": "tool", "tool_name": name, "content": result})
         return None
-
-
-# --------------------------------------------------------------------------- #
-# Anthropic (Claude) — official SDK
-# --------------------------------------------------------------------------- #
-class AnthropicProvider:
-    def __init__(self, model: str = "claude-opus-4-8", api_key: str | None = None,
-                 max_tokens: int = 4096):
-        self.model = model
-        self.api_key = api_key
-        self.max_tokens = max_tokens
-
-    def run_agent_loop(self, system, user_task, tools, execute, max_steps):
-        try:
-            import anthropic
-        except ImportError as exc:
-            raise ProviderError(
-                "Claude driver needs the Anthropic SDK: pip install 'renfield[anthropic]' "
-                "and set ANTHROPIC_API_KEY."
-            ) from exc
-
-        client = anthropic.Anthropic(api_key=self.api_key)  # api_key=None -> reads env
-        anth_tools = [
-            {"name": t["name"], "description": t.get("description", ""), "input_schema": _params(t)}
-            for t in tools
-        ]
-        messages = [{"role": "user", "content": user_task}]
-        final = None
-        for _ in range(max_steps):
-            resp = client.messages.create(
-                model=self.model, max_tokens=self.max_tokens, system=system,
-                tools=anth_tools, messages=messages,
-            )
-            if resp.stop_reason == "refusal":
-                return "[model refused]"
-            messages.append({"role": "assistant", "content": resp.content})
-            tool_uses = [b for b in resp.content if getattr(b, "type", None) == "tool_use"]
-            final = next((b.text for b in resp.content if getattr(b, "type", None) == "text"), final)
-            if not tool_uses:
-                break
-            results = []
-            for tu in tool_uses:
-                out = execute(tu.name, dict(tu.input or {}))
-                results.append({"type": "tool_result", "tool_use_id": tu.id, "content": out})
-            messages.append({"role": "user", "content": results})
-        return final
 
 
 # --------------------------------------------------------------------------- #
@@ -183,8 +136,6 @@ def build_provider(name: str, model: str | None = None, api_key: str | None = No
     model = model or PROVIDER_DEFAULT_MODEL.get(name)
     if name == "ollama":
         return OllamaProvider(model, host=host)
-    if name == "anthropic":
-        return AnthropicProvider(model, api_key=api_key)
     if name == "openai":
         return OpenAIProvider(model, api_key=api_key, base_url=base_url)
-    raise ProviderError(f"unknown provider '{name}' (use: ollama | anthropic | openai)")
+    raise ProviderError(f"unknown provider '{name}' (use: ollama | openai)")

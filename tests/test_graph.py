@@ -8,7 +8,7 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
 
 def _scan():
-    servers = load_config(EXAMPLES / "sample_claude_config.json")
+    servers = load_config(EXAMPLES / "sample_agent_config.json")
     attach_tools(servers, load_tools_manifest(EXAMPLES / "sample_tools.json"))
     classify_servers(servers)
     return build_chains(servers)

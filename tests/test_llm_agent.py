@@ -97,5 +97,4 @@ def test_ollama_provider_loop_executes_tools():
 
 def test_build_provider_defaults():
     assert build_provider("ollama").model == "qwen2.5:7b"
-    assert build_provider("anthropic").model == "claude-opus-4-8"
     assert build_provider("openai").model == "gpt-4o"

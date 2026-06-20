@@ -1,8 +1,8 @@
 """Ingest an agent's MCP config + optional tool manifest.
 
 Supports the common config shapes:
-  - Claude Desktop / Cline / Cursor:  {"mcpServers": {name: {command, args, env}}}
-  - VS Code style:                    {"servers": {name: {...}}}
+  - Cursor / Cline / VS Code (mcpServers):  {"mcpServers": {name: {command, args, env}}}
+  - VS Code (servers):                      {"servers": {name: {...}}}
 
 A static config only lists *servers*, not their tools. v0.1 reads tools from a
 separate manifest JSON (so the pipeline is testable offline). v0.2 will connect

@@ -111,18 +111,19 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument("--max", type=int, default=3, help="max chains to verify")
     verify.add_argument(
         "--driver",
-        choices=["scripted", "ollama", "anthropic", "openai"],
+        choices=["scripted", "ollama", "openai"],
         default="scripted",
-        help="scripted = deterministic walk (no LLM); ollama/anthropic/openai = a "
-             "real model decides (measures susceptibility)",
+        help="scripted = deterministic walk (no LLM); ollama/openai = a real model "
+             "decides (measures susceptibility). openai + --base-url hits any "
+             "OpenAI-compatible gateway.",
     )
     verify.add_argument(
         "--model",
-        help="model id (default per driver: ollama=qwen2.5:7b, anthropic=claude-opus-4-8, openai=gpt-4o)",
+        help="model id (default per driver: ollama=qwen2.5:7b, openai=gpt-4o)",
     )
     verify.add_argument(
         "--api-key",
-        help="API key (else read from ANTHROPIC_API_KEY / OPENAI_API_KEY env)",
+        help="API key (else read from OPENAI_API_KEY env)",
     )
     verify.add_argument(
         "--base-url",

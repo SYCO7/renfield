@@ -7,9 +7,9 @@ be proven end-to-end with zero LLM cost or flakiness.
 
 LLMAgent (v0.3+) lets a real model read the poisoned content and *decide* whether
 to walk the chain — that measures genuine susceptibility rather than assuming it.
-The model runs behind a pluggable Provider (Ollama / Claude / OpenAI-compatible),
-so the same harness works across every popular LLM API. The oracle and sandbox
-are identical for every driver; only the decision-maker changes.
+The model runs behind a pluggable Provider (Ollama, or any OpenAI-compatible API),
+so the same harness works across every popular LLM. The oracle and sandbox are
+identical for every driver; only the decision-maker changes.
 """
 
 from __future__ import annotations
@@ -85,7 +85,7 @@ class LLMAgent:
     the secret and emailing it out, the oracle catches the canary in egress — that
     is genuine indirect-prompt-injection susceptibility, not an assumption.
 
-    The provider (Ollama / Claude / OpenAI-compatible) is swappable; the tool
+    The provider (Ollama, or any OpenAI-compatible API) is swappable; the tool
     surface, executor, and oracle are identical across all of them. Inject a fake
     provider to test the loop without any live model.
     """

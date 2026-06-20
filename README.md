@@ -92,8 +92,9 @@ ren verify examples/vuln_lab_config.json
 # 3. MEASURE a real model — does it actually fall for the injection?
 #    Pick any provider; the harness is identical across all of them.
 ren verify examples/vuln_lab_config.json --driver ollama      # local, free (qwen2.5:7b)
-ren verify examples/vuln_lab_config.json --driver anthropic   # Claude (claude-opus-4-8)
 ren verify examples/vuln_lab_config.json --driver openai      # GPT / Codex (gpt-4o)
+ren verify examples/vuln_lab_config.json --driver openai \
+    --base-url https://openrouter.ai/api/v1 --model <any-model>   # 100+ models
 ```
 
 `verify` exits non-zero when a chain is PROVEN, so it gates a pentest run or CI.
@@ -123,18 +124,16 @@ compare models head-to-head.
 | Driver | Backend | Install | Key |
 |--------|---------|---------|-----|
 | `--driver ollama` | local models via Ollama | core (no extra) | none — `ollama serve` |
-| `--driver anthropic` | Claude (`claude-opus-4-8`) | `pip install 'renfield[anthropic]'` | `ANTHROPIC_API_KEY` |
 | `--driver openai` | GPT / Codex (`gpt-4o`) | `pip install 'renfield[openai]'` | `OPENAI_API_KEY` |
-| `--driver openai --base-url …` | any OpenAI-compatible API — OpenRouter, Groq, Together, DeepSeek, local vLLM | `pip install 'renfield[openai]'` | that provider's key |
+| `--driver openai --base-url …` | **any OpenAI-compatible gateway** — OpenRouter, Groq, Together, DeepSeek, local vLLM — i.e. 100+ models behind one flag | `pip install 'renfield[openai]'` | that gateway's key |
 
-Add your keys the standard way (no plaintext key files):
+Add your key the standard way (no plaintext key files):
 
 ```bash
-export ANTHROPIC_API_KEY=sk-ant-...        # Claude
 export OPENAI_API_KEY=sk-...               # OpenAI / Codex
-# or pass --api-key / --base-url on the command line
+# or point at any gateway with --base-url + --api-key
 ren verify my-agent.json --driver openai --model gpt-4o
-ren verify my-agent.json --driver openai --base-url https://openrouter.ai/api/v1 --model anthropic/claude-3.5-sonnet
+ren verify my-agent.json --driver openai --base-url https://openrouter.ai/api/v1 --model <any-model>
 ```
 
 The agent loop is provider-pluggable, so it's fully tested without any live model
@@ -155,8 +154,8 @@ to test against. Self-contained, offline, safe.
   sandbox + canary, side-effect oracle, deliberately-vulnerable lab.
 - **v0.3 — real LLM driver** *(done)*: Ollama-backed agent loop measuring genuine
   susceptibility.
-- **v0.4 — multi-provider drivers** *(done)*: Ollama + Claude + OpenAI/Codex + any
-  OpenAI-compatible endpoint; bring your own key, compare models head-to-head.
+- **v0.4 — multi-provider drivers** *(done)*: local Ollama + OpenAI/Codex + any
+  OpenAI-compatible gateway (100+ models); bring your own key, compare head-to-head.
 - **v0.5 — egress capture + OAuth-consent confused deputy** (the least-tooled class).
 - **v0.6 — JSON / SARIF evidence report** mapped to OWASP MCP / Agentic Top 10.
 - **v0.7 — optional MCP-server wrapper** so other agents can call Renfield.
