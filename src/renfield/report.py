@@ -54,3 +54,28 @@ def render(servers: list[Server], chains: list[ToxicChain], mode: str = "static"
     out.append("      Only assess agent stacks you own or are authorized to test.")
     out.append(_RULE)
     return "\n".join(out)
+
+
+def render_leaderboard(rows: list[dict]) -> str:
+    """Render a head-to-head model-susceptibility leaderboard from `compare`."""
+    out = [
+        _RULE,
+        "renfield — model susceptibility leaderboard",
+        _RULE,
+        f"{'MODEL':<26} {'PWNED':<7} ATTACK CLASSES PROVEN",
+        _THIN,
+    ]
+    for r in rows:
+        label = str(r["label"])[:25]
+        if r.get("error"):
+            out.append(f"{label:<26} {'err':<7} setup failed: {r['error'][:28]}")
+            continue
+        score = f"{r['pwned']}/{r['total']}"
+        classes = ", ".join(r["classes"]) if r["classes"] else "(resisted all)"
+        out.append(f"{label:<26} {score:<7} {classes}")
+    out.append(_THIN)
+    out.append("Higher PWNED = more susceptible. `scripted` is the deterministic upper")
+    out.append("bound (everything reachable if the agent fully obeys the injection).")
+    out.append("Only test agent stacks you own or are authorized to assess.")
+    out.append(_RULE)
+    return "\n".join(out)

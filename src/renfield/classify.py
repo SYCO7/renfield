@@ -30,12 +30,14 @@ SENSITIVE_HINTS = (
     "vault", "read_database", "query_db", "db_query", "dump", "read_config",
 )
 
-# Tools that can push data off the host.
+# Tools that can push data off the host, OR exercise privileged authority on the
+# user's behalf (the confused-deputy sink — e.g. approving an OAuth consent).
 SINK_HINTS = (
     "send", "post", "publish", "upload", "push", "tweet", "reply",
     "create_pr", "create_pull", "create_issue", "create_comment",
     "create_gist", "create_release", "http", "request", "webhook",
     "email_send", "send_email", "make_request", "notify", "outbound",
+    "consent", "approve", "grant", "authorize", "oauth",
 )
 
 

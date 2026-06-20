@@ -13,7 +13,7 @@ from .classify import classify_servers
 from .config import attach_tools, load_config, load_tools_manifest
 from .graph import build_chains
 from .live import enumerate_tools
-from .report import render
+from .report import render, render_leaderboard
 from .verify import verify_chain
 
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
@@ -59,7 +59,7 @@ def _run_verify(args: argparse.Namespace) -> int:
     driver_label = "scripted" if args.driver == "scripted" else f"{args.driver}:{args.model or 'default'}"
 
     print("=" * 66)
-    print("renfield — dynamic verification (v0.4)")
+    print("renfield — dynamic verification (v0.5)")
     print("=" * 66)
     print(f"driver: {driver_label}")
     if args.driver != "scripted":
@@ -75,7 +75,8 @@ def _run_verify(args: argparse.Namespace) -> int:
         verdict = verify_chain(chain, servers, driver=driver)
         status = "PROVEN" if verdict.exploited else "NOT PROVEN"
         proven += int(verdict.exploited)
-        print(f"[{status}] #{i}  {chain.hops()}")
+        klass = f"  [{verdict.attack_class}]" if verdict.exploited else ""
+        print(f"[{status}] #{i}{klass}  {chain.hops()}")
         for step in verdict.trace:
             observed = step["observed"].replace("\n", " ")[:70]
             print(f"          {step['step']:<9} {step['tool']:<22} -> {observed}")
@@ -88,6 +89,47 @@ def _run_verify(args: argparse.Namespace) -> int:
     print("Only test agent stacks you own or are authorized to assess.")
     print("=" * 66)
     return 1 if proven else 0
+
+
+def _spec_driver(spec, args):
+    """'scripted' | 'ollama:qwen2.5:7b' | 'openai:gpt-4o' -> a driver instance."""
+    if spec == "scripted":
+        return None
+    driver_name, _, model = spec.partition(":")
+    from .agent import LLMAgent
+    from .providers import build_provider
+    provider = build_provider(
+        driver_name, model=model or None, api_key=args.api_key,
+        base_url=args.base_url, host=args.ollama_host,
+    )
+    return LLMAgent(provider=provider)
+
+
+def _run_compare(args: argparse.Namespace) -> int:
+    servers = _prepare(args.config, None, live=True)
+    criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
+    specs = args.with_ or ["scripted"]
+    if not criticals:
+        print("no CRITICAL cross-server chains to compare.")
+        return 0
+
+    rows = []
+    for spec in specs:
+        try:
+            driver = _spec_driver(spec, args)
+        except Exception as exc:  # provider/SDK/setup error — record, keep going
+            rows.append({"label": spec, "total": len(criticals), "pwned": 0,
+                         "classes": [], "error": str(exc)})
+            continue
+        classes = []
+        for chain in criticals:
+            verdict = verify_chain(chain, servers, driver=driver)
+            if verdict.exploited:
+                classes.append(verdict.attack_class)
+        rows.append({"label": spec, "total": len(criticals), "pwned": len(classes),
+                     "classes": sorted(set(classes))})
+    print(render_leaderboard(rows))
+    return 1 if any(r["pwned"] for r in rows) else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -133,6 +175,22 @@ def build_parser() -> argparse.ArgumentParser:
         "--ollama-host", help="Ollama host (default http://localhost:11434)"
     )
     verify.set_defaults(func=_run_verify)
+
+    cmp = sub.add_parser(
+        "compare",
+        help="run the attack against several models and print a susceptibility leaderboard",
+    )
+    cmp.add_argument("config", help="path to the MCP config JSON")
+    cmp.add_argument("--max", type=int, default=5, help="max critical chains to test")
+    cmp.add_argument(
+        "--with", dest="with_", action="append", metavar="SPEC",
+        help="model to test, repeatable. SPEC = 'scripted' | 'ollama:<model>' | "
+             "'openai:<model>'. e.g. --with ollama:qwen2.5:7b --with openai:gpt-4o",
+    )
+    cmp.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
+    cmp.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
+    cmp.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
+    cmp.set_defaults(func=_run_compare)
     return parser
 
 

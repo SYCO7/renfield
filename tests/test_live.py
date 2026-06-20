@@ -17,7 +17,9 @@ def test_enumerate_inbox_role():
 def test_enumerate_all_roles():
     s = Server(name="all", command=sys.executable, args=[VULN], env={"TOXI_ROLE": "all"})
     enumerate_tools([s])
-    assert {t.name for t in s.tools} == {"read_message", "read_file", "send_email"}
+    assert {t.name for t in s.tools} == {
+        "read_message", "read_file", "send_email", "http_post", "approve_consent",
+    }
 
 
 def test_enumerate_missing_command_reports_error():
