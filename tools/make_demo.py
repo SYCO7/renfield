@@ -2,7 +2,7 @@
 """Render an animated terminal demo (docs/demo.gif + docs/demo.mp4) with Pillow.
 
 No external recorder needed. Produces a typed-terminal animation of the
-scan -> verify -> compare flow for the README and a LinkedIn-ready MP4.
+scan -> verify -> compare flow as a README GIF and an MP4.
 
     python tools/make_demo.py
 """
