@@ -16,7 +16,7 @@ by real side effect, and measures whether a live LLM actually falls for it.
 
 <img src="docs/demo.gif" alt="renfield demo — scan the agent's MCP mesh, prove 3 attack classes by real side effect, rank model susceptibility" width="100%">
 
-📹 **[Watch the demo](docs/demo.mp4)** · 📄 **[Proof of Concept & use case](docs/POC.md)**
+📹 **[Watch the demo](docs/demo.mp4)** · 🎬 **[How it works (animation)](docs/howitworks.mp4)** · 📄 **[Proof of Concept](docs/POC.md)**
 
 </div>
 
@@ -77,20 +77,26 @@ Same loop, new target surface:
 | **Prove impact** | observed canary in egress sink — exfiltration confirmed |
 | Report | ranked chains -> OWASP MCP / Agentic Top 10 + severity |
 
-## Install
+## How it works
+
+![how it works](docs/howitworks.gif)
+
+## Install & first run (one minute, no API key, no GPU)
 
 ```bash
 git clone https://github.com/SYCO7/renfield && cd renfield
-pip install -e .            # zero runtime deps; or just run with PYTHONPATH=src
+pip install -e .          # zero runtime deps
+ren quickstart            # runs the bundled lab end-to-end: scan -> prove -> fix
 ```
 
-## 60-second demo
-
-No API key, no GPU — runs against the bundled vulnerable lab:
+`ren quickstart` needs nothing configured — it proves 3 attack classes against the
+bundled vulnerable lab and prints the minimal fix. Then point it at your own agent:
 
 ```bash
-./demo.sh        # scan -> verify (proves 3 attack classes) -> leaderboard
+ren verify path/to/your-mcp-config.json
 ```
+
+See **[SECURITY.md](SECURITY.md)** for the trust model before testing real stacks.
 
 ## Quickstart
 

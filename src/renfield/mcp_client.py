@@ -3,17 +3,20 @@
 Just enough of the Model Context Protocol to launch a server, complete the
 initialize handshake, list its tools, and call them. Zero dependencies.
 
-Limitation (v0.2): reads are blocking. A server that never replies will hang;
-a real-world timeout/watchdog lands later. Fine for local labs + well-behaved
-servers that respond promptly.
+Hardening: every request is bounded by a timeout (default 20s). A hostile or
+hung MCP server cannot wedge Renfield — on timeout the server is killed and the
+call raises MCPError. Still: treat the target config as trusted input, and run
+untrusted third-party servers inside a throwaway VM or container.
 """
 
 from __future__ import annotations
 
 import json
 import subprocess
+import threading
 
 PROTOCOL_VERSION = "2025-06-18"
+DEFAULT_TIMEOUT = 20.0
 
 
 class MCPError(RuntimeError):
@@ -79,10 +82,27 @@ class MCPStdioClient:
                 return msg.get("result")
             # otherwise a notification / unrelated message — skip
 
-    def request(self, method: str, params: dict | None = None):
+    def request(self, method: str, params: dict | None = None, timeout: float = DEFAULT_TIMEOUT):
         rid = self._next_id()
         self._send({"jsonrpc": "2.0", "id": rid, "method": method, "params": params or {}})
-        return self._read_result(rid)
+        # read in a worker thread so a server that never replies can't hang us
+        box: dict = {}
+
+        def _read():
+            try:
+                box["ok"] = self._read_result(rid)
+            except Exception as exc:  # noqa: BLE001
+                box["err"] = exc
+
+        t = threading.Thread(target=_read, daemon=True)
+        t.start()
+        t.join(timeout)
+        if t.is_alive():
+            self.close()  # kill the hung/hostile server; the read thread then unblocks
+            raise MCPError(f"timeout after {timeout}s waiting for '{method}'")
+        if "err" in box:
+            raise box["err"]
+        return box.get("ok")
 
     def notify(self, method: str, params: dict | None = None) -> None:
         self._send({"jsonrpc": "2.0", "method": method, "params": params or {}})

@@ -19,6 +19,16 @@ from .verify import verify_chain
 _SEVERITY_RANK = {"CRITICAL": 3, "HIGH": 2, "MEDIUM": 1, "LOW": 0}
 
 
+def _safe(s) -> str:
+    """Strip terminal control chars from server-controlled text (anti-spoofing).
+
+    A malicious MCP server could emit ANSI escapes / control codes in its tool
+    output or tool names to forge a clean-looking report. Drop anything that
+    isn't printable before we print it.
+    """
+    return "".join(c for c in str(s) if c.isprintable() or c == " ")
+
+
 def _prepare(config, tools, live):
     servers = load_config(config)
     if live:
@@ -88,13 +98,13 @@ def _run_verify(args: argparse.Namespace) -> int:
     for i, verdict in enumerate(verdicts, 1):
         status = "PROVEN" if verdict.exploited else "NOT PROVEN"
         klass = f"  [{verdict.attack_class}]" if verdict.exploited else ""
-        print(f"[{status}] #{i}{klass}  {verdict.chain.hops()}")
+        print(f"[{status}] #{i}{klass}  {_safe(verdict.chain.hops())}")
         for step in verdict.trace:
-            observed = step["observed"].replace("\n", " ")[:70]
-            print(f"          {step['step']:<9} {step['tool']:<22} -> {observed}")
+            observed = _safe(step["observed"]).replace("\n", " ")[:70]
+            print(f"          {_safe(step['step']):<9} {_safe(step['tool']):<22} -> {observed}")
         if verdict.error:
-            print(f"          error: {verdict.error}")
-        print(f"          oracle: {verdict.evidence or '—'}\n")
+            print(f"          error: {_safe(verdict.error)}")
+        print(f"          oracle: {_safe(verdict.evidence) or '—'}\n")
 
     print("-" * 66)
     print(f"{proven}/{len(criticals)} chains PROVEN exploitable by real side effect.")
@@ -153,6 +163,52 @@ def _run_remediate(args: argparse.Namespace) -> int:
     rem = minimal_fix(criticals)
     print(render_remediation(criticals, rem))
     return 0
+
+
+def _lab_servers():
+    """Build the bundled vulnerable-lab servers with absolute paths (cwd-independent)."""
+    import sys as _sys
+    from pathlib import Path
+
+    from .models import Server
+    here = Path(__file__).resolve()
+    for vuln in (here.parents[2] / "examples" / "vuln_server.py",
+                 Path.cwd() / "examples" / "vuln_server.py"):
+        if vuln.exists():
+            roles = ["inbox", "files", "mailer", "web", "oauth"]
+            return [Server(r, _sys.executable, [str(vuln)], {"TOXI_ROLE": r}) for r in roles]
+    return None
+
+
+def _run_quickstart(args: argparse.Namespace) -> int:
+    from .verify import verify_chain
+    servers = _lab_servers()
+    if servers is None:
+        print("Couldn't find the bundled lab. Clone the repo and run from its root:\n"
+              "  git clone https://github.com/SYCO7/renfield && cd renfield\n"
+              "  pip install -e . && ren quickstart")
+        return 1
+
+    print("Renfield quickstart — running the bundled vulnerable lab. Zero setup.\n")
+    enumerate_tools(servers)
+    classify_servers(servers)
+    chains = build_chains(servers)
+    criticals = [c for c in chains if c.severity == "CRITICAL"]
+
+    print(render(servers, [c for c in chains if c.severity == "CRITICAL"], mode="live"))
+    print("\nPROVING each critical chain by a real side effect...\n")
+    proven = 0
+    for i, chain in enumerate(criticals, 1):
+        v = verify_chain(chain, servers)
+        proven += int(v.exploited)
+        tag = f"[PROVEN] [{v.attack_class}]" if v.exploited else "[NOT PROVEN]"
+        print(f"  {tag}  {_safe(chain.hops())}")
+    print(f"\n  {proven}/{len(criticals)} chains PROVEN by real side effect.\n")
+
+    print(render_remediation(criticals, minimal_fix(criticals)))
+    print("\nNext: point it at YOUR agent —  ren verify path/to/your-mcp-config.json")
+    print("Only test agent stacks you own or are authorized to assess.")
+    return 1 if proven else 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -227,6 +283,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     rem.add_argument("config", help="path to the MCP config JSON")
     rem.set_defaults(func=_run_remediate)
+
+    qs = sub.add_parser(
+        "quickstart",
+        help="zero-setup demo: run the bundled vulnerable lab end-to-end",
+    )
+    qs.set_defaults(func=_run_quickstart)
     return parser
 
 
