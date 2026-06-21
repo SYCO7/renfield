@@ -217,18 +217,40 @@ compare models head-to-head.
 | `--driver openai` | GPT / Codex (`gpt-4o`) | `pip install 'renfield[openai]'` | `OPENAI_API_KEY` |
 | `--driver openai --base-url …` | **any OpenAI-compatible gateway** — OpenRouter, Groq, Together, DeepSeek, local vLLM — i.e. 100+ models behind one flag | `pip install 'renfield[openai]'` | that gateway's key |
 
-Add your key the standard way (no plaintext key files):
+**Works with any model that has an API** — OpenAI / GPT, Claude, Gemini, Llama,
+DeepSeek, Mistral and more — through OpenAI-compatible endpoints (e.g. OpenRouter),
+plus any local model via Ollama. Bring your own key.
 
 ```bash
 export OPENAI_API_KEY=sk-...               # OpenAI / Codex
-# or point at any gateway with --base-url + --api-key
 ren verify my-agent.json --driver openai --model gpt-4o
-ren verify my-agent.json --driver openai --base-url https://openrouter.ai/api/v1 --model <any-model>
+
+# any other model (Claude, Gemini, Llama, …) via an OpenAI-compatible gateway:
+ren verify my-agent.json --driver openai \
+  --base-url https://openrouter.ai/api/v1 --api-key $OPENROUTER_KEY \
+  --model anthropic/claude-3.5-sonnet      # or google/gemini-... , meta-llama/... , etc.
 ```
 
 The agent loop is provider-pluggable, so it's fully tested without any live model
 or API key (injected fake "susceptible" and "resistant" providers in
 `tests/test_llm_agent.py`).
+
+### Test a real agent (Claude Code / Cursor / Cline)
+
+Renfield reads the standard `mcpServers` config those tools use — point it at that
+file and it tests the **real** server mesh, then drive it with whatever model that
+agent runs:
+
+```bash
+ren verify .mcp.json                  # Claude Code project config
+ren verify ~/.cursor/mcp.json         # Cursor
+# drive with the agent's own model (e.g. Claude) to mimic real susceptibility:
+ren verify .mcp.json --driver openai --base-url https://openrouter.ai/api/v1 \
+  --api-key $OPENROUTER_KEY --model anthropic/claude-3.5-sonnet
+```
+
+> Scope: Renfield re-runs the attack against the agent's MCP servers with a model
+> you choose — it does not intercept the live agent process. Test only configs you own.
 
 ## Attack classes proven
 
