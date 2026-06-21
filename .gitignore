@@ -16,9 +16,12 @@ venv/
 .coverage
 htmlcov/
 
-# toxitrace runtime
+# renfield runtime + scan output (don't accidentally commit findings)
 renfield-*/        # leftover sandbox dirs (should self-clean, belt-and-braces)
 *.egress.log
+*.sarif
+*.fixed.json
+renfield.json
 
 # Editors / OS
 .vscode/
