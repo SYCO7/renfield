@@ -11,7 +11,7 @@ import sys
 
 from .classify import classify_servers
 from .config import attach_tools, load_config, load_tools_manifest
-from .graph import build_chains, minimal_fix
+from .graph import build_chains, minimal_fix, servers_in_cut
 from .live import enumerate_tools
 from .report import render, render_leaderboard, render_remediation
 from .verify import verify_chain
@@ -154,6 +154,31 @@ def _run_compare(args: argparse.Namespace) -> int:
     return 1 if any(r["pwned"] for r in rows) else 0
 
 
+def _emit_patch(config_path: str, cut: list[str], out_arg: str) -> None:
+    """Write a fixed MCP config with the offending server(s) removed, and show a diff."""
+    import copy
+    import difflib
+    import json
+    from pathlib import Path
+
+    raw = json.loads(Path(config_path).read_text())
+    key = "mcpServers" if "mcpServers" in raw else "servers"
+    remove = servers_in_cut(cut)
+    patched = copy.deepcopy(raw)
+    for s in remove:
+        patched.get(key, {}).pop(s, None)
+
+    before = json.dumps(raw, indent=2).splitlines(keepends=True)
+    after = json.dumps(patched, indent=2).splitlines(keepends=True)
+    diff = "".join(difflib.unified_diff(before, after, fromfile="before", tofile="after"))
+
+    print(f"\nFIXED CONFIG — remove server(s): {', '.join(remove)}\n")
+    print(diff)
+    out = out_arg if out_arg != "-" else str(Path(config_path).with_suffix(".fixed.json"))
+    Path(out).write_text(json.dumps(patched, indent=2) + "\n")
+    print(f"wrote patched config -> {out}  (re-scan it to confirm 0 critical chains)")
+
+
 def _run_remediate(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"]
@@ -162,6 +187,8 @@ def _run_remediate(args: argparse.Namespace) -> int:
         return 0
     rem = minimal_fix(criticals)
     print(render_remediation(criticals, rem))
+    if getattr(args, "patch", None) is not None:
+        _emit_patch(args.config, rem.cut, args.patch)
     return 0
 
 
@@ -282,6 +309,11 @@ def build_parser() -> argparse.ArgumentParser:
              "critical chain, and prove 0 remain",
     )
     rem.add_argument("config", help="path to the MCP config JSON")
+    rem.add_argument(
+        "--patch", nargs="?", const="-", metavar="OUTFILE",
+        help="also emit a FIXED MCP config (offending server(s) removed) + a diff; "
+             "pass a path, or omit for <config>.fixed.json",
+    )
     rem.set_defaults(func=_run_remediate)
 
     qs = sub.add_parser(

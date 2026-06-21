@@ -3,8 +3,10 @@
 import sys
 from pathlib import Path
 
+import json
+
 from renfield.classify import classify_servers
-from renfield.graph import build_chains, chain_nodes, minimal_fix
+from renfield.graph import build_chains, chain_nodes, minimal_fix, servers_in_cut
 from renfield.live import enumerate_tools
 from renfield.models import Server
 
@@ -39,3 +41,18 @@ def test_chain_nodes_contains_endpoints():
     c = _criticals()[0]
     nodes = chain_nodes(c)
     assert c.source.ref in nodes and c.sink.ref in nodes
+
+
+def test_servers_in_cut_maps_tools_to_servers():
+    assert servers_in_cut(["inbox.read_message"]) == ["inbox"]
+    assert servers_in_cut(["a.x", "a.y", "b.z"]) == ["a", "b"]
+
+
+def test_remediate_patch_emits_fixed_config(tmp_path):
+    from renfield.cli import main
+    cfg = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_lab_config.json")
+    out = tmp_path / "fixed.json"
+    main(["remediate", cfg, "--patch", str(out)])
+    block = json.loads(out.read_text())["mcpServers"]
+    assert "inbox" not in block          # the offending source server is removed
+    assert "files" in block and "mailer" in block   # the rest are kept

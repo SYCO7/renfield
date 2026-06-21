@@ -82,6 +82,15 @@ def build_chains(servers: list[Server]) -> list[ToxicChain]:
     return chains
 
 
+def servers_in_cut(cut: list[str]) -> list[str]:
+    """Map a tool-level cut (server.tool refs) to the server(s) to remove/disable.
+
+    MCP configs gate at server granularity, so the concrete config-level fix is to
+    drop the server(s) carrying the cut capabilities.
+    """
+    return sorted({ref.split(".", 1)[0] for ref in cut})
+
+
 def chain_nodes(chain: ToxicChain) -> set[str]:
     """The tools a chain depends on — removing ANY one breaks the chain."""
     nodes = {chain.source.ref, chain.sink.ref}

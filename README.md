@@ -56,13 +56,20 @@ Prior art splits into buckets that never meet. Renfield lives in the seam.
 | promptfoo / AgentDojo | runs live | "was tool called", not real egress; single-server |
 
 Nobody fuses **cross-server pathfinding + confused-deputy payload + live side-effect
-proof + a real-model susceptibility test, run against the defender's own stack.**
-That intersection is Renfield.
+proof + a real-model susceptibility test, run against the defender's own stack** —
+**and then hands you the fixed config.** That intersection is Renfield.
 
-> **Honest framing.** Side-effect oracles (VIPER-MCP) and confused-deputy payload
-> synthesis (MCP-ITP) each exist *separately*. Renfield's contribution is fusing
-> them — cross-server, on your real stack, with a live LLM in the loop and an
-> evidence trace — not inventing either piece.
+**What Renfield does that the others don't:** scanners (mcp-scan, Snyk, Cisco) find
+issues statically; benchmarks (AgentDojo, promptfoo) rank models on synthetic tasks.
+Renfield is the one that **proves a cross-server chain by a real side effect on your
+own stack, then computes and emits the minimal config fix** (`remediate --patch`).
+It does not try to replace those platforms — it does the one job they don't.
+
+> **Honest framing.** Side-effect oracles and confused-deputy payload synthesis each
+> exist *separately* elsewhere. Renfield's contribution is **fusing** them — cross-server,
+> on your real stack, with a live model, an evidence trace, and a proven minimal fix —
+> not inventing each piece. It's the best tool *for that specific job*, not a
+> replacement for a full security platform.
 
 ## It *is* a penetration test
 
@@ -151,11 +158,11 @@ scripted                   3/3     Data Exfiltration, Network Exfiltration, OAut
 One reproducible command answers *"which models, on my stack, leak secrets when an
 agent reads attacker-controlled content?"*
 
-### Prove the fix (`remediate`)
+### Find → prove → **fix** (`remediate`)
 
-Renfield doesn't just prove you're exposed — it computes the **smallest set of
-capabilities to remove that breaks every proven chain**, then re-analyses to prove
-none remain:
+Most tools stop at "you're vulnerable." Renfield computes the **smallest set of
+capabilities to remove that breaks every proven chain**, re-analyses to prove none
+remain, and — with `--patch` — **hands you the fixed MCP config**:
 
 ```
 renfield — minimal fix (proven remediation)
@@ -167,6 +174,17 @@ Smallest set of capabilities to remove or gate to break ALL of them:
 Re-analysis after removing them: 0 / 3 critical chains remain.
 [PROVEN FIX] this single change eliminates every proven attack above.
 ```
+
+```bash
+ren remediate my-agent.json --patch          # writes my-agent.fixed.json + a diff
+```
+```diff
+   "mcpServers": {
+-    "inbox": { "command": "npx", "args": ["-y", "@modelcontextprotocol/server-github"] },
+     "files": { ... },
+```
+
+You get the patched config, not just advice. Re-scan it to confirm 0 critical chains.
 
 ## Use it in CI 🛡️ (GitHub code scanning)
 
