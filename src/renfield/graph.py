@@ -75,11 +75,47 @@ def build_chains(servers: list[Server]) -> list[ToxicChain]:
                 )
             )
 
+    chains.extend(_destructive_chains(servers))
+
     chains.sort(
         key=lambda c: (_SEVERITY_RANK[c.severity], c.cross_server, c.hops()),
         reverse=True,
     )
     return chains
+
+
+def _destructive_chains(servers: list[Server]) -> list[ToxicChain]:
+    """Untrusted-source -> destructive-action chains (integrity harm, not exfil).
+
+    A confused deputy doesn't only leak data — attacker-controlled content can
+    steer the agent into deleting/overwriting it. There is no sensitive-read hop:
+    the harm is the destructive action itself, proven by the data being gone.
+    """
+    tools = [t for s in servers for t in s.tools]
+    sources = [t for t in tools if Capability.UNTRUSTED_SOURCE in t.capabilities]
+    destructive = [t for t in tools if Capability.DESTRUCTIVE_SINK in t.capabilities]
+
+    out: list[ToxicChain] = []
+    for source in sources:
+        for sink in destructive:
+            if source.ref == sink.ref:
+                continue
+            cross = source.server != sink.server
+            out.append(ToxicChain(
+                source=source, sink=sink, sensitive=None,
+                servers=sorted({source.server, sink.server}),
+                cross_server=cross,
+                severity="CRITICAL" if cross else "HIGH",
+                owasp=["MCP Tool Poisoning (Indirect Prompt Injection)",
+                       "Confused Deputy", "Destructive Action / Integrity Loss"],
+                rationale=(
+                    f"Attacker-controlled content from {source.ref} can steer the agent "
+                    f"to destroy data via {sink.ref} "
+                    f"({'across servers' if cross else 'within one server'})."
+                ),
+                kind="destructive",
+            ))
+    return out
 
 
 def servers_in_cut(cut: list[str]) -> list[str]:

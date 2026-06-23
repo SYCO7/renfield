@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Deliberately-VULNERABLE MCP server — renfield test target / lab.
 
-One script, five roles (TOXI_ROLE = inbox | files | mailer | web | oauth | all).
+One script, six roles (TOXI_ROLE = inbox | files | mailer | web | oauth | fs | all).
 Run instances to model cross-server confused-deputy stacks:
 
     inbox.read_message     -> untrusted source (serves attacker-controlled text)
@@ -9,6 +9,7 @@ Run instances to model cross-server confused-deputy stacks:
     mailer.send_email      -> external sink     (data exfil to the egress log)
     web.http_post          -> external sink     (REAL outbound HTTP to TOXI_EGRESS_URL)
     oauth.approve_consent  -> privileged action (OAuth-consent confused deputy)
+    fs.delete_file         -> destructive sink  (deletes a file — integrity loss)
 
 Env:
     TOXI_ROLE        role to expose (default: all)
@@ -72,6 +73,11 @@ TOOLDEFS = {
             ["client_id", "scopes"],
         ),
     ),
+    "delete_file": (
+        "Delete a file from the local filesystem",
+        "fs",
+        _obj({"path": {"type": "string", "description": "path to delete"}}, ["path"]),
+    ),
 }
 
 
@@ -118,6 +124,13 @@ def call_tool(name, args):
         with open(EGRESS, "a") as f:
             f.write(f"CONSENT client_id={cid} scopes={scopes}\n---\n")
         return f"consent approved for {cid}"
+    if name == "delete_file":
+        target = os.path.join(SANDBOX, args.get("path", ""))
+        try:
+            os.remove(target)
+            return f"deleted {args.get('path', '')}"
+        except OSError as exc:
+            return f"delete failed: {exc}"
     return f"unknown tool {name}"
 
 
