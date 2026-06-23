@@ -138,6 +138,29 @@ def _esc(s) -> str:
     return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
 
 
+def _multihop_html(prov) -> str:
+    flow = getattr(prov, "flow", None) if prov else None
+    if flow is None or not flow.laundered:
+        return ""
+    chips = " → ".join(
+        f"<span class='hop {h.role}'>{_esc(h.tool)}</span>" for h in flow.hops
+    )
+    return (f"<div class='flow'><span class='lbl'>multi-hop "
+            f"(laundered via {len(flow.relays)} relay):</span> {chips}</div>")
+
+
+def _trace_html(trace) -> str:
+    if not trace:
+        return ""
+    rows = []
+    for step in trace:
+        tool = _esc(step.get("tool", ""))
+        obs = _esc(str(step.get("observed", "")).replace("\n", " ")[:120])
+        rows.append(f"<tr><td class='t'>{tool}</td><td class='o'>{obs}</td></tr>")
+    return ("<details class='trace'><summary>tool-call trace "
+            f"({len(trace)} step(s))</summary><table>{''.join(rows)}</table></details>")
+
+
 def verdicts_to_html(verdicts, config_path: str) -> str:
     """A self-contained, dependency-free HTML evidence report (shareable artifact)."""
     proven = sum(1 for v in verdicts if v.exploited)
@@ -145,7 +168,7 @@ def verdicts_to_html(verdicts, config_path: str) -> str:
     for i, v in enumerate(verdicts, 1):
         ok = v.exploited
         prov = getattr(v, "provenance", None)
-        taint = f"<div class='taint'>{_esc(prov.path())}</div>" if (prov and ok) else ""
+        taint = f"<div class='taint'>taint: {_esc(prov.path())}</div>" if (prov and ok) else ""
         cards.append(
             f"<div class='card {'bad' if ok else 'ok'}'>"
             f"<div class='hd'><span class='tag'>{'PROVEN' if ok else 'not proven'}</span>"
@@ -153,6 +176,8 @@ def verdicts_to_html(verdicts, config_path: str) -> str:
             f"<div class='chain'>{_esc(v.chain.hops())}</div>"
             f"<div class='ev'>{_esc(v.evidence) or '—'}</div>"
             f"{taint}"
+            f"{_multihop_html(prov) if ok else ''}"
+            f"{_trace_html(v.trace) if ok else ''}"
             f"<div class='owasp'>{_esc(', '.join(v.chain.owasp))}</div>"
             f"</div>"
         )
@@ -173,6 +198,14 @@ h1{{font-size:1.4rem;margin:0 0 .25rem}} .sub{{color:#8b949e;margin-bottom:1.5re
 .cls{{color:#d29922}} .hd #{{margin-left:auto}}
 .chain{{font-weight:600;margin:.25rem 0}} .ev{{color:#8b949e}}
 .taint{{margin-top:.5rem;color:#58a6ff}} .owasp{{margin-top:.5rem;font-size:.8rem;color:#6e7681}}
+.flow{{margin-top:.5rem;font-size:.85rem}} .flow .lbl{{color:#8b949e;margin-right:.4rem}}
+.hop{{display:inline-block;padding:.05rem .4rem;border-radius:4px;background:#21262d;margin:.1rem 0}}
+.hop.relay{{background:#5a3a1a;color:#f0b860}} .hop.source{{color:#f0883e}}
+.hop.sink{{color:#f85149}} .hop.sensitive{{color:#d29922}}
+.trace{{margin-top:.6rem;font-size:.8rem}} .trace summary{{cursor:pointer;color:#8b949e}}
+.trace table{{border-collapse:collapse;margin-top:.4rem;width:100%}}
+.trace td{{border-top:1px solid #21262d;padding:.2rem .5rem;vertical-align:top}}
+.trace td.t{{color:#79c0ff;white-space:nowrap}} .trace td.o{{color:#8b949e}}
 footer{{margin-top:2rem;color:#6e7681;font-size:.8rem}}
 </style></head><body>
 <h1>🩸 Renfield — agent pentest report</h1>
@@ -182,6 +215,54 @@ footer{{margin-top:2rem;color:#6e7681;font-size:.8rem}}
 <footer>Proven by observed side effect (canary egress / integrity loss / privileged action), not text-grading.
 Only test agent stacks you own or are authorized to assess.</footer>
 </body></html>"""
+
+
+_HTML_HEAD = """<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>{title}</title>
+<style>:root{{color-scheme:dark}}
+body{{font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#0d1117;color:#c9d1d9;margin:0;padding:2rem}}
+h1{{font-size:1.3rem;margin:0 0 1rem}} table{{border-collapse:collapse;width:100%}}
+th,td{{text-align:left;padding:.4rem .6rem;border-bottom:1px solid #21262d}}
+th{{color:#8b949e;font-weight:600}} .yes{{color:#f85149;font-weight:700}} .no{{color:#3fb950}}
+footer{{margin-top:1.5rem;color:#6e7681;font-size:.8rem}}</style></head><body>"""
+
+
+def leaderboard_to_html(rows) -> str:
+    trs = []
+    for r in rows:
+        if r.get("error"):
+            trs.append(f"<tr><td>{_esc(r['label'])}</td><td>err</td>"
+                       f"<td>setup failed: {_esc(r['error'])}</td></tr>")
+            continue
+        cls = ", ".join(r["classes"]) if r["classes"] else "(resisted all)"
+        trs.append(f"<tr><td>{_esc(r['label'])}</td>"
+                   f"<td class='{'yes' if r['pwned'] else 'no'}'>{r['pwned']}/{r['total']}</td>"
+                   f"<td>{_esc(cls)}</td></tr>")
+    return (_HTML_HEAD.format(title="Renfield — model susceptibility") +
+            "<h1>🩸 Renfield — model susceptibility leaderboard</h1>"
+            "<table><tr><th>model</th><th>pwned</th><th>attack classes proven</th></tr>"
+            f"{''.join(trs)}</table>"
+            "<footer>Higher pwned = more susceptible. Proven by side effect.</footer></body></html>")
+
+
+def matrix_to_html(rows, techniques) -> str:
+    head = "".join(f"<th>{_esc(t)}</th>" for t in techniques)
+    trs = []
+    for r in rows:
+        if r.get("error"):
+            trs.append(f"<tr><td>{_esc(r['label'])}</td><td colspan='{len(techniques)+1}'>"
+                       f"setup failed: {_esc(r['error'])}</td></tr>")
+            continue
+        bypass = set(r["bypass"])
+        resisted = len(techniques) - len(bypass & set(techniques))
+        cells = "".join(
+            f"<td class='{'yes' if t in bypass else 'no'}'>{'✓' if t in bypass else '·'}</td>"
+            for t in techniques)
+        trs.append(f"<tr><td>{_esc(r['label'])}</td><td>{resisted}/{len(techniques)}</td>{cells}</tr>")
+    return (_HTML_HEAD.format(title="Renfield — technique matrix") +
+            "<h1>🩸 Renfield — model × injection-technique robustness</h1>"
+            f"<table><tr><th>model</th><th>resist</th>{head}</tr>{''.join(trs)}</table>"
+            "<footer>✓ = technique bypassed the model (proven side effect) · = resisted.</footer></body></html>")
 
 
 def render(verdicts, config_path: str, fmt: str) -> str:

@@ -444,7 +444,10 @@ confused-deputy stacks above. Self-contained, offline, safe.
   arbitrary intermediate tool results, detecting *laundering* (data stashed in a
   notes/store tool and read back before exfil). Driver- and length-agnostic;
   surfaced in `verify` text + JSON (`provenance.multihop`).
-- **v1.4 — HTML report for `audit`/`compare` + taint over the live LLM trace UI** (planned).
+- **v1.4 — HTML reports for `audit`/`compare` + taint trace UI** *(done)*:
+  `audit`/`compare` gain `--format html`; proven findings render the full tool-call
+  trace and the multi-hop taint path with relay hops highlighted.
+- **v1.5 — taint-aware remediation hints (gate the relay, not just the source)** (planned).
 
 ## Ethics / legal
 
