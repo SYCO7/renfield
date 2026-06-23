@@ -355,6 +355,30 @@ Claude Code, Cursor, Cline, Windsurf, Continue, VS Code, Zed — any MCP client.
 | **Network Exfiltration** | HTTP POST | canary observed in an **outbound request** to a live listener — data physically left the box |
 | **OAuth-Consent Confused Deputy** | consent grant | agent used its own authority to approve an attacker app's OAuth consent |
 
+## Taint / provenance — *why* it leaked, and who's to blame
+
+The oracle proves *data-flow* (the secret reached a sink). Provenance proves
+**attribution**. Every proven chain carries a labelled taint path, and each hop is
+checked independently — a unique `SRC` token in the attacker message, the `CANARY`
+in the secret, and its appearance at the egress sink, in causal order:
+
+```
+taint:  inbox.read_message[SRC✓] ⇒ files.read_file[CANARY✓] ⇒ web.http_post[egress✓]
+```
+
+`verify --causality` goes further and **attributes** the leak to the untrusted
+source by a *differential control*: it re-runs the same chain with a benign message.
+
+```bash
+ren verify .mcp.json --driver ollama --causality
+```
+
+If the chain leaks under the injected payload but the benign control stays dormant,
+the leak is **causally attributed** to the source — not an artefact of the harness.
+(The deterministic `scripted` driver leaks either way; Renfield says so plainly
+rather than over-claiming.) Provenance is surfaced in text, `--format json`, and the
+MCP `renfield_*` tool results.
+
 ## The bundled lab
 
 `examples/vuln_server.py` is a deliberately-vulnerable MCP server with five roles
@@ -386,7 +410,12 @@ confused-deputy stacks above. Self-contained, offline, safe.
   spoof, audit pretext, data smuggling, obfuscation, …) and reports which bypass the
   model — a robustness profile, not one yes/no. Enumeration and the technique matrix
   run concurrently.
-- **v1.0 — taint/provenance hints + HTML report** (planned).
+- **v1.0 — taint / provenance + causal attribution** *(done)*: every proven leak
+  carries a labelled taint path `source[SRC] ⇒ sensitive[CANARY] ⇒ sink[egress]`,
+  and `verify --causality` runs a benign control to attribute the leak to the
+  untrusted source (leak only under injection ⇒ caused by it). Surfaced in text,
+  JSON, and the MCP findings.
+- **v1.1 — HTML report** (planned).
 
 ## Ethics / legal
 

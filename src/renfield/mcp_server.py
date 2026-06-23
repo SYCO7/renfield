@@ -72,7 +72,7 @@ def _capability_map(servers):
     }
 
 
-def _chain_dict(c, *, exploited=None, attack_class=None, evidence=None):
+def _chain_dict(c, *, exploited=None, attack_class=None, evidence=None, provenance=None):
     d = {
         "chain": c.hops(),
         "severity": c.severity,
@@ -82,6 +82,9 @@ def _chain_dict(c, *, exploited=None, attack_class=None, evidence=None):
     }
     if exploited is not None:
         d.update(exploited=exploited, attack_class=attack_class, evidence=evidence)
+        if provenance is not None:
+            d["taint_path"] = provenance.path()
+            d["tainted"] = provenance.tainted
     return d
 
 
@@ -112,7 +115,8 @@ def tool_verify(config_path, max=6, driver=None, **_):
         "proven": len(proven),
         "findings": [
             _chain_dict(v.chain, exploited=v.exploited,
-                        attack_class=v.attack_class, evidence=v.evidence)
+                        attack_class=v.attack_class, evidence=v.evidence,
+                        provenance=v.provenance)
             for v in verdicts
         ],
         "exploitable": len(proven) > 0,
@@ -154,7 +158,8 @@ def tool_audit(config_path, max=6, driver=None, **_):
         "exploitable": len(proven) > 0,
         "findings": [
             _chain_dict(v.chain, exploited=v.exploited,
-                        attack_class=v.attack_class, evidence=v.evidence)
+                        attack_class=v.attack_class, evidence=v.evidence,
+                        provenance=v.provenance)
             for v in verdicts
         ],
         "fix": None if not fix else {
