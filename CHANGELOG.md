@@ -3,6 +3,13 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.7.2]
+- **PyPI-ready packaging.** The vulnerable lab now ships *inside* the wheel at
+  `renfield/lab/vuln_server.py`, so `ren quickstart` works after `pip install`
+  (previously it relied on the repo's `examples/` dir, which isn't distributed).
+  Richer pyproject metadata (project URLs, full classifiers), a `PUBLISHING.md`
+  runbook, and a test keeping the bundled lab byte-identical to the example copy.
+
 ## [1.7.1]
 - **Configurable Ollama per-turn timeout** via `RENFIELD_OLLAMA_TIMEOUT` (seconds;
   default 120). Grammar-constrained tool-calling on CPU can run several seconds per
