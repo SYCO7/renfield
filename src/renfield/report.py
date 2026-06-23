@@ -126,13 +126,18 @@ def render_technique_matrix(rows: list[dict], techniques: list[str]) -> str:
     return "\n".join(out)
 
 
-def render_remediation(criticals, rem) -> str:
+def render_remediation(criticals, rem, barriers=None) -> str:
     """Render the minimal-fix result: smallest capability cut + proof it kills all."""
     out = [_RULE, "renfield — minimal fix (proven remediation)", _RULE,
            f"{len(criticals)} CRITICAL chain(s) found.", ""]
+    if getattr(rem, "kept", None):
+        out.append(f"Protected from the cut (--keep): {', '.join(rem.kept)}")
+        out.append("")
     out.append("Smallest set of capabilities to remove or gate to break ALL of them:")
     for ref in rem.cut:
         out.append(f"   - {ref}")
+    if not rem.cut:
+        out.append("   (none available — every breaking node is protected)")
     out.append("")
     if rem.proven:
         out.append(f"Re-analysis after removing them: 0 / {len(criticals)} critical chains remain.")
@@ -140,7 +145,19 @@ def render_remediation(criticals, rem) -> str:
     else:
         out.append(f"{len(rem.remaining)} chain(s) still exploitable after the cut:")
         for c in rem.remaining:
-            out.append(f"   ! {c.hops()}")
+            note = "  (UNBREAKABLE without removing a kept tool)" \
+                if c in getattr(rem, "unbreakable", []) else ""
+            out.append(f"   ! {c.hops()}{note}")
+
+    if barriers:
+        out.append("")
+        out.append("TAINT BARRIERS (defense in depth) — proven exploits laundered "
+                   "tainted data")
+        out.append("through these relay tools; gate them (provenance check / human "
+                   "approval) too:")
+        for relay, chains in barriers.items():
+            out.append(f"   ~ {relay}   (laundered {len(chains)} proven chain(s))")
+
     out.append(_THIN)
     out.append("Apply by removing the tool, narrowing its permission/scope, or gating it")
     out.append("behind human approval once the agent has ingested untrusted content.")
