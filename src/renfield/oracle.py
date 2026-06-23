@@ -22,6 +22,8 @@ from .sandbox import Sandbox
 
 ATTACKER_CLIENT = "attacker-app"
 _CONSENT_HINTS = ("consent", "approve", "grant", "authorize")
+# sinks that perform an action *authenticated by a credential* (token replay)
+_AUTH_ACTION_HINTS = ("deploy", "trigger", "invoke", "dispatch", "provision", "run_job")
 
 
 def _read_log(sandbox: Sandbox) -> str:
@@ -54,6 +56,15 @@ def confirm(chain: ToxicChain, sandbox: Sandbox,
                 f"attacker app ({ATTACKER_CLIENT}, scopes=*) — confused deputy confirmed"
             )
         return False, "OAuth-Consent Confused Deputy", "consent not granted to attacker"
+
+    # 1.5 Credential / token reuse — the user's credential was replayed to
+    #     authenticate a privileged action (deploy/invoke/...) for the attacker.
+    #     Distinct from passive exfil: harm is an action taken *as the user*.
+    if any(h in sink for h in _AUTH_ACTION_HINTS) and sandbox.canary in log:
+        return True, "Credential/Token Reuse", (
+            f"the user's credential ({short}...) was replayed via {chain.sink.ref} to "
+            f"authenticate a privileged action — token-reuse confused deputy confirmed"
+        )
 
     # 2. Network exfiltration — the canary physically left over HTTP
     if monitor is not None and monitor.captured(sandbox.canary):
