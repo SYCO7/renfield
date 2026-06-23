@@ -3,6 +3,15 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.5.0]
+- **Taint-aware remediation.** `remediate --keep <tool>` protects a load-bearing
+  tool (e.g. the agent's whole-purpose source) from the cut, forcing the minimal
+  fix downstream — gate the relay/sink/sensitive instead of the source — and flags
+  any chain that becomes *unbreakable* by removal alone (gate it behind approval).
+- **`remediate --prove`** surfaces **taint barriers**: relay tools that laundered a
+  proven exploit and should also be gated (provenance check / human approval), as
+  defense in depth beyond the guaranteed minimal cut.
+
 ## [1.4.0]
 - **HTML reports for `audit` and `compare`** — `ren audit --format html` and
   `ren compare --format html` (leaderboard *and* `--matrix`) emit self-contained,

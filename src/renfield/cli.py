@@ -263,13 +263,22 @@ def _emit_patch(config_path: str, cut: list[str], out_arg: str) -> None:
 def _run_remediate(args: argparse.Namespace) -> int:
     if not _resolve_config(args):
         return 2
+    from .graph import taint_barriers
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"]
     if not criticals:
         print("no CRITICAL chains — nothing to remediate.")
         return 0
-    rem = minimal_fix(criticals)
-    print(render_remediation(criticals, rem))
+
+    # --prove runs verification so laundering relay tools surface as taint barriers
+    barriers = None
+    if getattr(args, "prove", False):
+        driver = _make_driver(args)
+        verdicts = [verify_chain(c, servers, driver=driver) for c in criticals]
+        barriers = taint_barriers(verdicts) or None
+
+    rem = minimal_fix(criticals, keep=args.keep or ())
+    print(render_remediation(criticals, rem, barriers=barriers))
     if getattr(args, "patch", None) is not None:
         _emit_patch(args.config, rem.cut, args.patch)
     return 0
@@ -547,6 +556,24 @@ def build_parser() -> argparse.ArgumentParser:
         help="also emit a FIXED MCP config (offending server(s) removed) + a diff; "
              "pass a path, or omit for <config>.fixed.json",
     )
+    rem.add_argument(
+        "--keep", action="append", metavar="TOOL", default=[],
+        help="protect a load-bearing tool ref (e.g. inbox.read_message) from the cut, "
+             "forcing the fix downstream (gate the relay/sink instead). Repeatable.",
+    )
+    rem.add_argument(
+        "--prove", action="store_true",
+        help="run verification to surface TAINT BARRIERS — relay tools that laundered "
+             "a proven exploit and should also be gated (defense in depth)",
+    )
+    rem.add_argument(
+        "--driver", choices=["scripted", "ollama", "openai"], default="scripted",
+        help="driver for --prove (scripted walks direct; a model may launder via relays)",
+    )
+    rem.add_argument("--model", help="model id for --prove (ollama=qwen2.5:7b, openai=gpt-4o)")
+    rem.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
+    rem.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
+    rem.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
     rem.set_defaults(func=_run_remediate)
 
     qs = sub.add_parser(

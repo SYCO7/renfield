@@ -193,6 +193,9 @@ Re-analysis after removing them: 0 / 3 critical chains remain.
 
 ```bash
 ren remediate my-agent.json --patch          # writes my-agent.fixed.json + a diff
+ren remediate my-agent.json --keep inbox.read_message   # source is load-bearing?
+                                              # force the fix downstream (gate the sink/relay)
+ren remediate my-agent.json --prove --driver ollama     # also flag taint-barrier relays
 ```
 ```diff
    "mcpServers": {
@@ -447,7 +450,11 @@ confused-deputy stacks above. Self-contained, offline, safe.
 - **v1.4 — HTML reports for `audit`/`compare` + taint trace UI** *(done)*:
   `audit`/`compare` gain `--format html`; proven findings render the full tool-call
   trace and the multi-hop taint path with relay hops highlighted.
-- **v1.5 — taint-aware remediation hints (gate the relay, not just the source)** (planned).
+- **v1.5 — taint-aware remediation** *(done)*: `remediate --keep <tool>` protects a
+  load-bearing tool from the cut and forces the fix downstream (gate the relay/sink,
+  not the source); `--prove` surfaces taint barriers — relay tools that laundered a
+  proven exploit and should be gated too.
+- **v1.6 — provenance-gated MCP proxy (enforce the barriers at runtime)** (planned).
 
 ## Ethics / legal
 
