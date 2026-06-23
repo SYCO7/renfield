@@ -21,6 +21,7 @@ dev = ["pytest>=7"]
 [project.scripts]
 ren = "renfield.cli:main"
 renfield = "renfield.cli:main"
+renfield-mcp = "renfield.mcp_server:main"   # serve Renfield's commands as MCP tools
 
 [build-system]
 requires = ["setuptools>=61"]

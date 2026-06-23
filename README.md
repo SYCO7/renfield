@@ -270,6 +270,30 @@ ren verify .mcp.json --driver openai --base-url https://openrouter.ai/api/v1 \
 > Scope: Renfield re-runs the attack against the agent's MCP servers with a model
 > you choose — it does not intercept the live agent process. Test only configs you own.
 
+## Run Renfield *as* an MCP server
+
+Renfield is normally an MCP *client*. You can also serve its commands **as MCP
+tools**, so a host agent (Claude Desktop / Cursor / Cline) can drive a pentest by
+calling tools instead of a shell. Still zero deps — the stdio transport is
+plain newline-delimited JSON-RPC, stdlib-only.
+
+```bash
+renfield-mcp        # speaks JSON-RPC 2.0 on stdin/stdout
+```
+
+Wire it into the host's `mcpServers` config:
+
+```json
+{ "mcpServers": { "renfield": { "command": "renfield-mcp" } } }
+```
+
+Exposed tools: `renfield_scan`, `renfield_verify`, `renfield_compare`,
+`renfield_remediate`, `renfield_quickstart` — same arguments as the CLI.
+
+> ⚠️ `verify` / `compare` run **real** confused-deputy exploit proofs against the
+> config you pass. Serving Renfield over MCP lets the calling agent launch those
+> proofs — only point it at agent stacks you own or are authorized to assess.
+
 ## Attack classes proven
 
 | Class | Sink | How it's proven (real side effect) |
