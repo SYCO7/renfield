@@ -6,7 +6,8 @@ import sys
 from pathlib import Path
 
 from renfield.models import Capability, Server
-from renfield.proxy import GatingProxy, serve
+from renfield.proxy import (GatingProxy, render_session_report, report_from_events,
+                            serve)
 
 VULN = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_server.py")
 
@@ -77,6 +78,54 @@ def test_allow_list_bypasses_the_gate():
     p, _ = _proxy(allow={"send_email"})
     p.call("read_message", {})
     assert not _is_err(p.call("send_email", {"to": "a", "body": "hi"}))
+
+
+# --- v1.7: audit log + per-session provenance report ----------------------- #
+def test_events_recorded_with_decisions():
+    p, _ = _proxy()
+    p.call("read_message", {})
+    p.call("send_email", {"to": "a", "body": "b"})
+    assert [e["decision"] for e in p.events] == ["allowed", "blocked"]
+    assert p.events[0]["untrusted_ingested_before"] is False
+    assert p.events[1]["untrusted_ingested_before"] is True
+    assert p.events[1]["dangerous"] is True
+
+
+def test_session_report_summary_and_verdict():
+    p, _ = _proxy()
+    p.call("read_message", {})
+    p.call("send_email", {"to": "a", "body": "b"})
+    rep = p.session_report()
+    assert rep["calls"] == 2 and rep["allowed"] == 1
+    assert rep["blocked"] == ["send_email"]
+    assert rep["untrusted_ingested"] is True
+    assert "BLOCKED" in rep["verdict"]
+
+
+def test_audit_log_jsonl_is_written(tmp_path):
+    log = tmp_path / "audit.jsonl"
+    p = GatingProxy([], audit_log=str(log))
+    p._started = True
+    fc = _FakeClient({"read_message": "x", "send_email": "sent"})
+    p.registry = {"read_message": (fc, {Capability.UNTRUSTED_SOURCE}, {}),
+                  "send_email": (fc, {Capability.EXTERNAL_SINK}, {})}
+    p.call("read_message", {})
+    p.call("send_email", {"to": "a", "body": "b"})
+    lines = [json.loads(x) for x in log.read_text().splitlines() if x.strip()]
+    assert len(lines) == 2
+    assert lines[1]["tool"] == "send_email" and lines[1]["decision"] == "blocked"
+
+
+def test_report_from_events_roundtrip_and_render():
+    p, _ = _proxy()
+    p.call("read_message", {})
+    p.call("send_email", {"to": "a", "body": "b"})
+    rep = report_from_events(p.events)
+    assert rep["blocked"] == ["send_email"]
+    text = render_session_report(rep, "text")
+    assert "BLOCKED" in text and "send_email" in text
+    html = render_session_report(rep, "html")
+    assert html.startswith("<!doctype html>") and "<script" not in html.lower()
 
 
 # --- integration: real lab backends over stdio ----------------------------- #
