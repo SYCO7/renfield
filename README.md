@@ -22,6 +22,20 @@ by real side effect, and measures whether a live LLM actually falls for it.
 
 ---
 
+## ⚡ Quick start
+
+```bash
+pip install renfield-mcp     # or from source: git clone … && pip install -e .
+ren quickstart               # proves 3 real attacks on a bundled lab — no API key, no GPU
+ren audit path/to/your-agent-config.json   # then point it at YOUR agent (.mcp.json, ~/.cursor/mcp.json, …)
+```
+
+`ren quickstart` finishes in seconds and prints `3/3 chains PROVEN` + the minimal fix.
+That's the whole pitch — proven exploits on a real MCP mesh, by observed side effect.
+Full walkthrough below; every command is in [Commands](#commands).
+
+---
+
 In *Dracula*, **Renfield** is the thrall — a servant who looks like he works for
 you but secretly takes his orders from a hidden master. That is exactly the failure
 mode of a tool-using AI agent: it reads an untrusted GitHub issue / email / web
