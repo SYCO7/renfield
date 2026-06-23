@@ -1,6 +1,6 @@
 [project]
 name = "renfield-mcp"
-version = "1.2.0"
+version = "1.3.0"
 description = "Renfield — penetration testing for AI agents: finds and PROVES cross-server confused-deputy exfiltration chains in an MCP tool mesh, measures whether a real LLM falls for them, and runs as an MCP server any agent can call."
 readme = "README.md"
 requires-python = ">=3.10"

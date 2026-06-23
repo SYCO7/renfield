@@ -67,6 +67,7 @@ def _provenance_json(v) -> dict | None:
     p = getattr(v, "provenance", None)
     if p is None:
         return None
+    flow = getattr(p, "flow", None)
     return {
         "taint_path": p.path(),
         "tainted": p.tainted,
@@ -76,6 +77,12 @@ def _provenance_json(v) -> dict | None:
         "causal_order": p.causal_order,
         "causally_attributed": p.causally_attributed,
         "causality_note": p.causality_note or None,
+        "multihop": None if flow is None else {
+            "path": flow.path_str(),
+            "hops": flow.length,
+            "laundered": flow.laundered,
+            "relays": flow.relays,
+        },
     }
 
 

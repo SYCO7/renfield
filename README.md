@@ -387,6 +387,16 @@ the leak is **causally attributed** to the source — not an artefact of the har
 rather than over-claiming.) Provenance is surfaced in text, `--format json`, and the
 MCP `renfield_*` tool results.
 
+**Multi-hop taint.** Taint is tracked through *every* tool result, not just the fixed
+source → sensitive → sink hops — so Renfield catches **laundering**, where the agent
+stashes the secret in a notes/store tool and reads it back from that trusted-looking
+tool before exfiltrating. The reconstructed path marks relay hops with `*`:
+
+```
+multi-hop: inbox.read_message ⇒ files.read_file ⇒ notes.save_note* ⇒ notes.load_note* ⇒ mailer.send_email
+           (laundered through 2 relay tool(s))
+```
+
 ## The bundled lab
 
 `examples/vuln_server.py` is a deliberately-vulnerable MCP server with five roles
@@ -430,7 +440,11 @@ confused-deputy stacks above. Self-contained, offline, safe.
 - **v1.2 — credential/token-reuse confused-deputy class** *(done)*: the user's
   credential is replayed to authenticate a privileged action for the attacker —
   proven by side effect, distinct from passive exfiltration.
-- **v1.3 — multi-hop taint over tool results** (planned).
+- **v1.3 — multi-hop taint over tool results** *(done)*: taint is tracked through
+  arbitrary intermediate tool results, detecting *laundering* (data stashed in a
+  notes/store tool and read back before exfil). Driver- and length-agnostic;
+  surfaced in `verify` text + JSON (`provenance.multihop`).
+- **v1.4 — HTML report for `audit`/`compare` + taint over the live LLM trace UI** (planned).
 
 ## Ethics / legal
 
