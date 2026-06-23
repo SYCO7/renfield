@@ -3,6 +3,13 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.7.0]
+- **Proxy audit log + per-session provenance report.** The gating proxy now records
+  every proxied call (`--audit-log <path.jsonl>`, durable) and can emit a session
+  report on shutdown (`--report <path>`; format from extension — text/json/html)
+  summarising the calls, what was ingested, and what was blocked/flagged. New
+  `ren proxy-report <log.jsonl>` renders a report from a saved audit log after the fact.
+
 ## [1.6.0]
 - **Provenance-gating MCP proxy** (`ren proxy <config>`) — Renfield's first
   *defensive runtime*. It fronts the agent's real MCP servers, tracks taint as

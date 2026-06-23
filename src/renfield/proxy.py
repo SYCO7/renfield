@@ -30,6 +30,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 
 from . import __version__
 from .classify import classify_tool
@@ -47,16 +48,19 @@ def _log(msg: str) -> None:
 class GatingProxy:
     """Forwards MCP tool calls to backend servers, gating dangerous ones by taint."""
 
-    def __init__(self, servers, policy: str = "trifecta", mode: str = "block", allow=()):
+    def __init__(self, servers, policy: str = "trifecta", mode: str = "block",
+                 allow=(), audit_log: str | None = None):
         self.servers = servers
         self.policy = policy
         self.mode = mode
         self.allow = set(allow or ())
+        self.audit_log = audit_log        # path to append JSONL events to (durable)
         self.clients: dict = {}
         self.registry: dict = {}          # tool name -> (client, capabilities, toolspec)
         self.untrusted_ingested = False
         self.tainted: set[str] = set()    # secret/untrusted-derived values seen
-        self.blocks: list[dict] = []      # audit log of denied calls
+        self.blocks: list[dict] = []      # denied calls (subset of events)
+        self.events: list[dict] = []      # every proxied call (the audit trail)
         self._started = False
 
     # --- backend lifecycle -------------------------------------------------
@@ -117,31 +121,142 @@ class GatingProxy:
             self.tainted.add(text)
 
     # --- the proxied call --------------------------------------------------
+    def _record(self, tool, decision, reason, dangerous, ingested_before) -> None:
+        event = {
+            "seq": len(self.events) + 1,
+            "ts": time.time(),
+            "tool": tool,
+            "decision": decision,                 # allowed | blocked | flagged
+            "reason": reason or None,
+            "dangerous": dangerous,
+            "untrusted_ingested_before": ingested_before,
+        }
+        self.events.append(event)
+        if decision in ("blocked", "flagged"):
+            self.blocks.append({"tool": tool, "reason": reason, "decision": decision})
+        if self.audit_log:
+            try:
+                with open(self.audit_log, "a") as f:
+                    f.write(json.dumps(event) + "\n")
+            except OSError as exc:
+                _log(f"could not write audit log: {exc}")
+
     def call(self, name: str, args: dict) -> dict:
         self.start()
         entry = self.registry.get(name)
         if entry is None:
+            self._record(name, "allowed", "unknown tool", False, self.untrusted_ingested)
             return {"content": [{"type": "text", "text": f"unknown tool {name}"}],
                     "isError": True}
         client, caps, _td = entry
+        ingested_before = self.untrusted_ingested
         blocked, reason = self.gate(name, args or {}, caps)
         if blocked:
-            self.blocks.append({"tool": name, "reason": reason})
-            _log(f"BLOCKED {name}: {reason}")
+            decision = "blocked" if self.mode == "block" else "flagged"
+            self._record(name, decision, reason, self._dangerous(caps), ingested_before)
+            _log(f"{decision.upper()} {name}: {reason}")
             if self.mode == "block":
                 return {"content": [{"type": "text", "text":
                         f"DENIED by renfield provenance policy: {name} — {reason}. "
                         f"Gate this tool behind human approval."}], "isError": True}
-            _log(f"FLAG (allowed in flag mode) {name}")
+        else:
+            self._record(name, "allowed", "", self._dangerous(caps), ingested_before)
         result = client.call_tool(name, args or {})
         self._absorb(caps, result)
         return result
+
+    def session_report(self) -> dict:
+        """A structured per-session provenance report of what the proxy saw."""
+        blocked = [e for e in self.events if e["decision"] == "blocked"]
+        flagged = [e for e in self.events if e["decision"] == "flagged"]
+        dangerous_after = [e for e in self.events
+                           if e["dangerous"] and e["untrusted_ingested_before"]]
+        if blocked:
+            verdict = f"{len(blocked)} dangerous call(s) BLOCKED after untrusted ingest"
+        elif flagged:
+            verdict = f"{len(flagged)} dangerous call(s) FLAGGED (flag mode — not blocked)"
+        elif dangerous_after:
+            verdict = "dangerous calls occurred after untrusted ingest but were allowed"
+        else:
+            verdict = "no dangerous action after untrusted content — clean session"
+        return {
+            "tool": "renfield-proxy",
+            "version": __version__,
+            "policy": self.policy,
+            "mode": self.mode,
+            "calls": len(self.events),
+            "untrusted_ingested": self.untrusted_ingested,
+            "allowed": sum(1 for e in self.events if e["decision"] == "allowed"),
+            "blocked": [e["tool"] for e in blocked],
+            "flagged": [e["tool"] for e in flagged],
+            "verdict": verdict,
+            "events": self.events,
+        }
 
     def tools_list(self) -> list[dict]:
         self.start()
         return [{"name": n, "description": td.get("description", ""),
                  "inputSchema": td.get("inputSchema") or {"type": "object", "properties": {}}}
                 for n, (_c, _caps, td) in self.registry.items()]
+
+
+def report_from_events(events: list[dict], policy="?", mode="?") -> dict:
+    """Rebuild a session report from a saved JSONL audit log (after the fact)."""
+    p = GatingProxy([], policy=policy, mode=mode)
+    p.events = list(events)
+    # best-effort from the log: ingest is visible once any later call records it
+    p.untrusted_ingested = (
+        any(e.get("untrusted_ingested_before") for e in events)
+        or any(e.get("decision") in ("blocked", "flagged") for e in events)
+    )
+    return p.session_report()
+
+
+def render_session_report(report: dict, fmt: str = "text") -> str:
+    """Render a session report as text or a self-contained HTML page."""
+    if fmt == "json":
+        return json.dumps(report, indent=2)
+    if fmt == "html":
+        return _session_html(report)
+    rule = "=" * 66
+    out = [rule, "renfield-proxy — session provenance report", rule,
+           f"policy: {report['policy']}   mode: {report['mode']}   "
+           f"calls: {report['calls']}",
+           f"untrusted content ingested: {report['untrusted_ingested']}",
+           f"verdict: {report['verdict']}", "-" * 66]
+    for e in report["events"]:
+        mark = {"blocked": "[BLOCKED]", "flagged": "[FLAGGED]", "allowed": "[ ok    ]"}[e["decision"]]
+        danger = " (dangerous)" if e["dangerous"] else ""
+        out.append(f"  {e['seq']:>3} {mark} {e['tool']}{danger}")
+        if e.get("reason"):
+            out.append(f"        - {e['reason']}")
+    out.append(rule)
+    return "\n".join(out)
+
+
+def _esc(s) -> str:
+    return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _session_html(report: dict) -> str:
+    rows = []
+    for e in report["events"]:
+        cls = {"blocked": "blk", "flagged": "flg", "allowed": "ok"}[e["decision"]]
+        rows.append(f"<tr class='{cls}'><td>{e['seq']}</td><td>{_esc(e['tool'])}</td>"
+                    f"<td>{e['decision']}</td><td>{_esc(e.get('reason') or '')}</td></tr>")
+    blocked = report["blocked"]
+    return (f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>renfield-proxy session</title><style>:root{{color-scheme:dark}}
+body{{font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#0d1117;color:#c9d1d9;margin:0;padding:2rem}}
+h1{{font-size:1.3rem;margin:0 0 .5rem}} .v{{font-size:1.05rem;margin:.5rem 0 1rem;color:{'#f85149' if blocked else '#3fb950'}}}
+table{{border-collapse:collapse;width:100%}} td,th{{padding:.35rem .6rem;border-bottom:1px solid #21262d;text-align:left}}
+tr.blk td{{color:#f85149}} tr.flg td{{color:#d29922}} tr.ok td{{color:#8b949e}}
+</style></head><body><h1>🩸 renfield-proxy — session report</h1>
+<div class="sub">policy {_esc(report['policy'])} · mode {_esc(report['mode'])} · {report['calls']} calls</div>
+<div class="v">{_esc(report['verdict'])}</div>
+<table><tr><th>#</th><th>tool</th><th>decision</th><th>reason</th></tr>{''.join(rows)}</table>
+</body></html>""")
 
 
 # ---------------------------------------------------------------------------
@@ -180,7 +295,7 @@ def _err(mid, code, message):
     return {"jsonrpc": "2.0", "id": mid, "error": {"code": code, "message": message}}
 
 
-def serve(proxy: GatingProxy, stdin=None, stdout=None) -> int:
+def serve(proxy: GatingProxy, stdin=None, stdout=None, report_path: str | None = None) -> int:
     stdin = stdin or sys.stdin
     stdout = stdout or sys.stdout
     try:
@@ -198,4 +313,13 @@ def serve(proxy: GatingProxy, stdin=None, stdout=None) -> int:
                 stdout.flush()
     finally:
         proxy.close()
+        if report_path:
+            fmt = "html" if report_path.endswith(".html") else (
+                "json" if report_path.endswith(".json") else "text")
+            try:
+                with open(report_path, "w") as f:
+                    f.write(render_session_report(proxy.session_report(), fmt))
+                _log(f"wrote session report -> {report_path}")
+            except OSError as exc:
+                _log(f"could not write session report: {exc}")
     return 0

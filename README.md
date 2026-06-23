@@ -379,6 +379,14 @@ ingest) or `--policy dataflow` (block only when tainted data is in the call args
 the proxy (not the backends directly), or the gate is bypassed. This is the defensive
 runtime that *enforces* what `remediate` recommends.
 
+Every proxied call can be logged for audit, and a per-session provenance report
+shows exactly what was ingested and what was blocked:
+
+```bash
+ren proxy real-config.json --audit-log session.jsonl --report session.html
+ren proxy-report session.jsonl --format text     # render a report from a saved log
+```
+
 ## Attack classes proven
 
 | Class | Sink | How it's proven (real side effect) |
@@ -485,7 +493,10 @@ confused-deputy stacks above. Self-contained, offline, safe.
   real servers and **blocks the lethal action at call time** — once untrusted
   content is read, an external/destructive call is denied (or flagged). The
   defensive runtime that *enforces* what `remediate` recommends.
-- **v1.7 — proxy audit log + per-session provenance report** (planned).
+- **v1.7 — proxy audit log + per-session provenance report** *(done)*: the proxy
+  records every call (`--audit-log`, JSONL) and emits a session report (`--report`,
+  text/json/html) of what was ingested and what was blocked; `ren proxy-report`
+  renders one from a saved log.
 
 ## Ethics / legal
 
