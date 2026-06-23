@@ -42,6 +42,38 @@ def test_html_escapes_untrusted_text():
     assert "&lt;img" in html
 
 
+def test_html_report_includes_trace_and_taint():
+    html = render(_verdicts(), "cfg", "html")
+    assert "tool-call trace" in html          # the LLM/scripted trace UI
+    assert "taint:" in html                    # provenance taint path rendered
+
+
+def test_leaderboard_and_matrix_html():
+    from renfield.outputs import leaderboard_to_html, matrix_to_html
+    lb = leaderboard_to_html([
+        {"label": "scripted", "total": 3, "pwned": 3, "classes": ["Data Exfiltration"]},
+        {"label": "tough", "total": 3, "pwned": 0, "classes": []},
+        {"label": "broken", "total": 3, "pwned": 0, "classes": [], "error": "no key"},
+    ])
+    assert lb.startswith("<!doctype html>") and "<script" not in lb.lower()
+    assert "3/3" in lb and "resisted all" in lb and "setup failed" in lb
+
+    mx = matrix_to_html(
+        [{"label": "m", "bypass": {"direct"}}], ["direct", "authority"])
+    assert "robustness" in mx and "1/2" in mx and "✓" in mx
+
+
+def test_audit_html_via_cli(tmp_path):
+    from renfield.cli import main
+    out = tmp_path / "audit.html"
+    cfg = str(Path(__file__).resolve().parents[1] / "examples" / "vuln_lab_config.json")
+    rc = main(["audit", cfg, "--format", "html", "-o", str(out)])
+    assert rc == 1                              # chains proven -> gate
+    html = out.read_text()
+    assert html.startswith("<!doctype html>")
+    assert "PROVEN" in html and "tool-call trace" in html
+
+
 def test_technique_matrix_grid():
     techs = ["direct", "authority", "obfuscation"]
     rows = [
