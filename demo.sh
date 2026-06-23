@@ -23,7 +23,7 @@ done
 
 B="\033[1m"; R="\033[31m"; G="\033[32m"; C="\033[36m"; Z="\033[0m"
 banner() { printf "\n${B}${C}========== %s ==========${Z}\n\n" "$1"; }
-pause()  { [ "$AUTO" = "1" ] && return 0; printf "\n${B}-- press Enter --${Z}"; read -r _; }
+pause()  { [ "$AUTO" = "1" ] && return 0; [ -t 0 ] || return 0; printf "\n${B}-- press Enter --${Z}"; read -r _; }
 run()    { printf "${G}\$ %s${Z}\n" "$*"; "$@"; }
 
 clear
