@@ -35,6 +35,7 @@ class Verdict:
     attack_class: str = "—"
     trace: list[dict] = field(default_factory=list)
     error: str = ""
+    provenance: "Provenance | None" = None
 
 
 def verify_chain(
@@ -42,7 +43,10 @@ def verify_chain(
     servers: list[Server],
     driver=None,
     payload: str = DEFAULT_PAYLOAD,
+    prove_causality: bool = False,
 ) -> Verdict:
+    from .provenance import BENIGN_CONTROL, build_provenance
+
     driver = driver or ScriptedAgent()
     sandbox = create_sandbox()
     monitor = EgressMonitor().start()
@@ -65,8 +69,9 @@ def verify_chain(
 
         trace = driver.run(chain, clients, sandbox)
         exploited, attack_class, evidence = confirm(chain, sandbox, monitor)
-        return Verdict(chain=chain, exploited=exploited, evidence=evidence,
-                       attack_class=attack_class, trace=trace)
+        provenance = build_provenance(chain, sandbox, trace, monitor)
+        verdict = Verdict(chain=chain, exploited=exploited, evidence=evidence,
+                          attack_class=attack_class, trace=trace, provenance=provenance)
     except Exception as exc:  # keep the harness robust; report rather than crash
         return Verdict(chain=chain, exploited=False, evidence="", error=str(exc))
     finally:
@@ -74,6 +79,20 @@ def verify_chain(
             client.close()
         monitor.stop()
         destroy_sandbox(sandbox)
+
+    # causal attribution: does a BENIGN message leave the chain dormant?
+    if prove_causality and verdict.exploited and verdict.provenance is not None:
+        control = verify_chain(chain, servers, driver=driver, payload=BENIGN_CONTROL)
+        if not control.exploited:
+            verdict.provenance.causally_attributed = True
+            verdict.provenance.causality_note = "benign control did not leak"
+        else:
+            verdict.provenance.causally_attributed = False
+            verdict.provenance.causality_note = (
+                "benign control ALSO leaked — driver walks regardless of input "
+                "(expected for the deterministic ScriptedAgent; not injection-driven)"
+            )
+    return verdict
 
 
 # ---------------------------------------------------------------------------

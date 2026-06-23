@@ -90,7 +90,9 @@ def _run_verify(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
     driver = _make_driver(args)
-    verdicts = [verify_chain(c, servers, driver=driver) for c in criticals]
+    causality = getattr(args, "causality", False)
+    verdicts = [verify_chain(c, servers, driver=driver, prove_causality=causality)
+                for c in criticals]
     proven = sum(1 for v in verdicts if v.exploited)
 
     # machine-readable output for CI / GitHub code scanning
@@ -128,7 +130,12 @@ def _run_verify(args: argparse.Namespace) -> int:
             print(f"          {_safe(step['step']):<9} {_safe(step['tool']):<22} -> {observed}")
         if verdict.error:
             print(f"          error: {_safe(verdict.error)}")
-        print(f"          oracle: {_safe(verdict.evidence) or '—'}\n")
+        print(f"          oracle: {_safe(verdict.evidence) or '—'}")
+        if verdict.provenance is not None and verdict.exploited:
+            print(f"          taint:  {_safe(verdict.provenance.path())}")
+            if verdict.provenance.causally_attributed is not None:
+                print(f"          {_safe(verdict.provenance.summary())}")
+        print()
 
     print("-" * 66)
     print(f"{proven}/{len(criticals)} chains PROVEN exploitable by real side effect.")
@@ -422,6 +429,12 @@ def build_parser() -> argparse.ArgumentParser:
     verify.add_argument(
         "--format", choices=["text", "json", "sarif"], default="text",
         help="output format. sarif uploads to GitHub code scanning; json for CI",
+    )
+    verify.add_argument(
+        "--causality", action="store_true",
+        help="attribute each proven leak to the untrusted source via a benign control "
+             "run (leak only under injection => caused by the source). Meaningful with "
+             "a live-model driver; the scripted control leaks either way.",
     )
     verify.add_argument("-o", "--out", help="write json/sarif to this file")
     verify.set_defaults(func=_run_verify)
