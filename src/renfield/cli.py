@@ -285,13 +285,19 @@ def _run_remediate(args: argparse.Namespace) -> int:
 
 
 def _lab_servers():
-    """Build the bundled vulnerable-lab servers with absolute paths (cwd-independent)."""
+    """Build the bundled vulnerable-lab servers with absolute paths (cwd-independent).
+
+    Prefer the copy shipped *inside* the package (renfield/lab/vuln_server.py) so
+    `ren quickstart` works after `pip install`, then fall back to the repo's
+    examples/ for source checkouts.
+    """
     import sys as _sys
     from pathlib import Path
 
     from .models import Server
     here = Path(__file__).resolve()
-    for vuln in (here.parents[2] / "examples" / "vuln_server.py",
+    for vuln in (here.parent / "lab" / "vuln_server.py",       # packaged (pip install)
+                 here.parents[2] / "examples" / "vuln_server.py",  # repo checkout
                  Path.cwd() / "examples" / "vuln_server.py"):
         if vuln.exists():
             roles = ["inbox", "files", "mailer", "web", "oauth"]
