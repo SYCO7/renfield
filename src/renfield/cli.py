@@ -29,6 +29,26 @@ def _safe(s) -> str:
     return "".join(c for c in str(s) if c.isprintable() or c == " ")
 
 
+def _resolve_config(args) -> bool:
+    """If no config path was given, auto-discover the installed agent's MCP config.
+
+    Returns True on success (args.config is set), False if nothing was found
+    (message already printed). Works with any agent — see discover.py.
+    """
+    if getattr(args, "config", None):
+        return True
+    from .discover import discover
+    label, path = discover()
+    if path is None:
+        print("no MCP config found automatically. Pass one explicitly:\n"
+              "  ren audit path/to/mcp-config.json\n"
+              "or list what was detected with:  ren agents", file=sys.stderr)
+        return False
+    args.config = path
+    print(f"auto-detected {label} config: {path}\n", file=sys.stderr)
+    return True
+
+
 def _prepare(config, tools, live):
     servers = load_config(config)
     if live:
@@ -42,6 +62,8 @@ def _prepare(config, tools, live):
 
 
 def _run_scan(args: argparse.Namespace) -> int:
+    if not _resolve_config(args):
+        return 2
     servers = _prepare(args.config, args.tools, args.live)
     chains = build_chains(servers)
     floor = _SEVERITY_RANK[args.min_severity]
@@ -63,6 +85,8 @@ def _make_driver(args):
 
 
 def _run_verify(args: argparse.Namespace) -> int:
+    if not _resolve_config(args):
+        return 2
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
     driver = _make_driver(args)
@@ -180,6 +204,8 @@ def _emit_patch(config_path: str, cut: list[str], out_arg: str) -> None:
 
 
 def _run_remediate(args: argparse.Namespace) -> int:
+    if not _resolve_config(args):
+        return 2
     servers = _prepare(args.config, None, live=True)
     criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"]
     if not criticals:
@@ -238,6 +264,119 @@ def _run_quickstart(args: argparse.Namespace) -> int:
     return 1 if proven else 0
 
 
+def _run_audit(args: argparse.Namespace) -> int:
+    """One-shot pipeline: enumerate ONCE, then scan -> prove -> minimal-fix.
+
+    Equivalent to running scan + verify + remediate, but the MCP mesh is
+    live-enumerated a single time and reused across all three phases.
+    Exit code is non-zero when any chain is PROVEN (gates CI / a pentest run).
+    """
+    if not _resolve_config(args):
+        return 2
+    servers = _prepare(args.config, None, live=True)  # one enumeration, reused below
+    chains = build_chains(servers)
+    criticals = [c for c in chains if c.severity == "CRITICAL"][: args.max]
+
+    print(render(servers, [c for c in chains if c.severity == "CRITICAL"], mode="live"))
+
+    if not criticals:
+        print("\nNo CRITICAL cross-server chains — nothing to prove or fix.")
+        return 0
+
+    print("\nPROVING each critical chain by a real side effect...\n")
+    driver = _make_driver(args)
+    proven = 0
+    for chain in criticals:
+        v = verify_chain(chain, servers, driver=driver)
+        proven += int(v.exploited)
+        tag = f"[PROVEN] [{v.attack_class}]" if v.exploited else "[NOT PROVEN]"
+        print(f"  {tag}  {_safe(chain.hops())}")
+        print(f"          oracle: {_safe(v.evidence) or '—'}")
+    print(f"\n  {proven}/{len(criticals)} chains PROVEN by real side effect.\n")
+
+    print(render_remediation(criticals, minimal_fix(criticals)))
+    if getattr(args, "patch", None) is not None:
+        _emit_patch(args.config, minimal_fix(criticals).cut, args.patch)
+    return 1 if proven else 0
+
+
+def _run_redteam(args: argparse.Namespace) -> int:
+    """Prove critical chains across a library of injection techniques.
+
+    The flagship measurement: not "is the agent exploitable?" but "which injection
+    *techniques* bypass this model on this mesh?" — a robustness profile, proven by
+    side effect. Meaningful with --driver ollama|openai; scripted is the control.
+    """
+    if not _resolve_config(args):
+        return 2
+    from .payloads import DEFAULT_SET, resolve
+    from .verify import redteam_chain
+
+    try:
+        techs = resolve(args.technique or DEFAULT_SET)
+    except KeyError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    servers = _prepare(args.config, None, live=True)
+    criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
+    driver = _make_driver(args)
+    # live models: run techniques sequentially by default (don't hammer one endpoint)
+    workers = args.workers if args.workers else (1 if args.driver != "scripted" else None)
+
+    driver_label = "scripted (control — every technique proves)" if args.driver == "scripted" \
+        else f"{args.driver}:{args.model or 'default'}"
+    print("=" * 66)
+    print("renfield — injection-technique red-team matrix")
+    print("=" * 66)
+    print(f"driver: {driver_label}")
+    print(f"techniques: {', '.join(t.name for t in techs)}\n")
+    if not criticals:
+        print("no CRITICAL cross-server chains to red-team.")
+        return 0
+
+    any_bypassed = False
+    for i, chain in enumerate(criticals, 1):
+        rt = redteam_chain(chain, servers, driver=driver, techniques=techs, workers=workers)
+        bypassed = rt.bypassed
+        any_bypassed = any_bypassed or bool(bypassed)
+        print(f"#{i}  {_safe(chain.hops())}")
+        for r in rt.results:
+            mark = "BYPASSED" if r.verdict.exploited else "resisted"
+            klass = f"  [{r.verdict.attack_class}]" if r.verdict.exploited else ""
+            print(f"      {mark:<9} {r.technique:<16}{klass}")
+        score = len(rt.resisted)
+        print(f"      -> resisted {score}/{len(rt.results)} techniques "
+              f"({len(bypassed)} bypass: {', '.join(bypassed) or 'none'})\n")
+
+    print("-" * 66)
+    print("A technique BYPASSED means the model walked the chain to a real side "
+          "effect\nunder that framing. More resisted = more robust to prompt injection.")
+    print("=" * 66)
+    return 1 if any_bypassed else 0
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    """Run Renfield AS an MCP server so any agent can call it as a tool."""
+    from .mcp_server import serve
+    return serve()
+
+
+def _run_agents(args: argparse.Namespace) -> int:
+    """List every installed coding-agent MCP config Renfield can audit."""
+    from .discover import discover_all
+    found = discover_all()
+    if not found:
+        print("No agent MCP configs detected in the usual locations.\n"
+              "Pass a path explicitly:  ren audit path/to/mcp-config.json")
+        return 0
+    print("Detected agent MCP configs (audit any with `ren audit <path>`):\n")
+    for label, path in found:
+        print(f"  {label:<24} {path}")
+    print(f"\n{len(found)} config(s). Default `ren audit` uses the first project-local one.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="renfield",
@@ -247,7 +386,7 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     scan = sub.add_parser("scan", help="static/live capability scan")
-    scan.add_argument("config", help="path to the MCP config JSON")
+    scan.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
     src = scan.add_mutually_exclusive_group()
     src.add_argument("--tools", help="path to a {server: [tools]} manifest JSON")
     src.add_argument("--live", action="store_true", help="enumerate tools live over MCP")
@@ -255,7 +394,7 @@ def build_parser() -> argparse.ArgumentParser:
     scan.set_defaults(func=_run_scan)
 
     verify = sub.add_parser("verify", help="live-enumerate, then PROVE critical chains")
-    verify.add_argument("config", help="path to the MCP config JSON")
+    verify.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
     verify.add_argument("--max", type=int, default=3, help="max chains to verify")
     verify.add_argument(
         "--driver",
@@ -308,7 +447,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="compute the smallest set of capabilities to remove that breaks EVERY "
              "critical chain, and prove 0 remain",
     )
-    rem.add_argument("config", help="path to the MCP config JSON")
+    rem.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
     rem.add_argument(
         "--patch", nargs="?", const="-", metavar="OUTFILE",
         help="also emit a FIXED MCP config (offending server(s) removed) + a diff; "
@@ -321,6 +460,63 @@ def build_parser() -> argparse.ArgumentParser:
         help="zero-setup demo: run the bundled vulnerable lab end-to-end",
     )
     qs.set_defaults(func=_run_quickstart)
+
+    audit = sub.add_parser(
+        "audit",
+        help="one-shot: enumerate once, then scan -> PROVE -> minimal-fix (CI-friendly)",
+    )
+    audit.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
+    audit.add_argument("--max", type=int, default=6, help="max critical chains to prove")
+    audit.add_argument(
+        "--driver", choices=["scripted", "ollama", "openai"], default="scripted",
+        help="scripted = deterministic walk (no LLM); ollama/openai = a real model decides",
+    )
+    audit.add_argument("--model", help="model id (ollama=qwen2.5:7b, openai=gpt-4o)")
+    audit.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
+    audit.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
+    audit.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
+    audit.add_argument(
+        "--patch", nargs="?", const="-", metavar="OUTFILE",
+        help="also emit the FIXED MCP config + diff; pass a path or omit for <config>.fixed.json",
+    )
+    audit.set_defaults(func=_run_audit)
+
+    rt = sub.add_parser(
+        "redteam",
+        help="prove critical chains across a LIBRARY of injection techniques — "
+             "which styles bypass your model? (a robustness profile, not one yes/no)",
+    )
+    rt.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
+    rt.add_argument("--max", type=int, default=3, help="max critical chains to test")
+    rt.add_argument(
+        "--driver", choices=["scripted", "ollama", "openai"], default="scripted",
+        help="scripted = control (all techniques prove); ollama/openai = real model profile",
+    )
+    rt.add_argument("--model", help="model id (ollama=qwen2.5:7b, openai=gpt-4o)")
+    rt.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
+    rt.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
+    rt.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
+    rt.add_argument(
+        "--technique", action="append",
+        help="technique to test, repeatable (default: all). "
+             "one of: direct, authority, roleplay, urgency, data_smuggle, "
+             "polite_indirect, obfuscation",
+    )
+    rt.add_argument("--workers", type=int, help="parallel techniques (default 4 scripted, 1 live)")
+    rt.set_defaults(func=_run_redteam)
+
+    serve = sub.add_parser(
+        "serve",
+        help="run Renfield AS an MCP server so ANY agent can call it as a tool "
+             "(add { command: 'ren', args: ['serve'] } to the agent's mcpServers)",
+    )
+    serve.set_defaults(func=_run_serve)
+
+    agents = sub.add_parser(
+        "agents",
+        help="list installed coding-agent MCP configs Renfield can audit",
+    )
+    agents.set_defaults(func=_run_agents)
     return parser
 
 
