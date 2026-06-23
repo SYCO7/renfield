@@ -450,8 +450,25 @@ def _run_proxy(args: argparse.Namespace) -> int:
     if not _resolve_config(args):
         return 2
     servers = load_config(args.config)
-    proxy = GatingProxy(servers, policy=args.policy, mode=args.mode, allow=args.allow or ())
-    return serve(proxy)
+    proxy = GatingProxy(servers, policy=args.policy, mode=args.mode,
+                        allow=args.allow or (), audit_log=args.audit_log)
+    return serve(proxy, report_path=args.report)
+
+
+def _run_proxy_report(args: argparse.Namespace) -> int:
+    """Render a per-session provenance report from a saved proxy audit log (JSONL)."""
+    import json as _json
+
+    from .proxy import render_session_report, report_from_events
+    events = []
+    with open(args.log) as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                events.append(_json.loads(line))
+    report = report_from_events(events)
+    _emit(render_session_report(report, args.format), getattr(args, "out", None), args.format)
+    return 1 if report["blocked"] else 0
 
 
 def _run_agents(args: argparse.Namespace) -> int:
@@ -667,7 +684,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--allow", action="append", metavar="TOOL", default=[],
         help="always allow this tool through the gate (repeatable)",
     )
+    proxy.add_argument(
+        "--audit-log", metavar="PATH",
+        help="append every proxied call as JSONL to this file (durable audit trail)",
+    )
+    proxy.add_argument(
+        "--report", metavar="PATH",
+        help="on shutdown, write a per-session provenance report "
+             "(format from extension: .html / .json / .txt)",
+    )
     proxy.set_defaults(func=_run_proxy)
+
+    prep = sub.add_parser(
+        "proxy-report",
+        help="render a per-session provenance report from a saved proxy --audit-log",
+    )
+    prep.add_argument("log", help="path to the proxy JSONL audit log")
+    prep.add_argument("--format", choices=["text", "json", "html"], default="text")
+    prep.add_argument("-o", "--out", help="write the report to this file")
+    prep.set_defaults(func=_run_proxy_report)
 
     agents = sub.add_parser(
         "agents",
