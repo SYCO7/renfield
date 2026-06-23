@@ -10,7 +10,7 @@ isolated single-server scanners structurally cannot see.
 from __future__ import annotations
 
 from collections import Counter
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .models import Capability, Server, Tool, ToxicChain
 
@@ -140,13 +140,15 @@ class Remediation:
     cut: list[str]              # capabilities to remove/gate
     broken: int                 # chains this cut breaks
     remaining: list[ToxicChain]  # chains still exploitable after the cut (should be empty)
+    kept: list[str] = field(default_factory=list)        # tools protected via keep=
+    unbreakable: list[ToxicChain] = field(default_factory=list)  # all nodes were kept
 
     @property
     def proven(self) -> bool:
         return not self.remaining
 
 
-def minimal_fix(chains: list[ToxicChain]) -> Remediation:
+def minimal_fix(chains: list[ToxicChain], keep: "list[str] | tuple[str, ...]" = ()) -> Remediation:
     """Smallest set of tools to remove so EVERY chain is broken (greedy hitting set).
 
     Each chain breaks if any of its tools is removed, so this is a minimum hitting
@@ -154,19 +156,52 @@ def minimal_fix(chains: list[ToxicChain]) -> Remediation:
     (always remove the tool covering the most still-live chains) is the standard
     log-approximation and is exact for the common shared-source case. This is the
     minimal least-privilege change that makes every proven attack impossible.
+
+    `keep` protects load-bearing tools (e.g. the agent's whole-purpose source) from
+    the cut — the fix is forced onto the other nodes (gate the sink/sensitive/relay
+    instead of the source). A chain whose every node is kept is *unbreakable* by
+    removal alone and is reported as such (gate it behind human approval instead).
     """
+    keep_set = set(keep or ())
     live = [chain_nodes(c) for c in chains]
     cut: list[str] = []
-    while live:
-        freq = Counter(tool for nodes in live for tool in nodes)
-        # most-covering tool; deterministic tiebreak by name
-        best = max(freq, key=lambda t: (freq[t], t))
+    while True:
+        # only chains that still have a removable (non-kept) node can be cut
+        candidates = [nodes for nodes in live if (nodes - keep_set)]
+        if not candidates:
+            break
+        freq = Counter(tool for nodes in candidates for tool in (nodes - keep_set))
+        best = max(freq, key=lambda t: (freq[t], t))  # most-covering; tiebreak by name
         cut.append(best)
         live = [nodes for nodes in live if best not in nodes]
 
     cut_set = set(cut)
     remaining = [c for c in chains if not (chain_nodes(c) & cut_set)]
-    return Remediation(cut=sorted(cut), broken=len(chains) - len(remaining), remaining=remaining)
+    unbreakable = [c for c in remaining if not (chain_nodes(c) - keep_set)]
+    return Remediation(cut=sorted(cut), broken=len(chains) - len(remaining),
+                       remaining=remaining, kept=sorted(keep_set), unbreakable=unbreakable)
+
+
+def taint_barriers(verdicts) -> dict[str, list[str]]:
+    """Relay tools that laundered a PROVEN exploit -> the chains they carried.
+
+    These are defense-in-depth gate points: the static cut breaks the chain, but a
+    relay that the agent used to launder tainted data (a notes/store tool read back
+    before exfil) should also be gated (provenance check / human approval), so the
+    observed laundering path is closed even where the source must be retained.
+    """
+    barriers: dict[str, list[str]] = {}
+    for v in verdicts:
+        if not getattr(v, "exploited", False):
+            continue
+        prov = getattr(v, "provenance", None)
+        flow = getattr(prov, "flow", None) if prov else None
+        if flow is not None and flow.laundered:
+            for relay in flow.relays:
+                barriers.setdefault(relay, [])
+                if v.chain.hops() not in barriers[relay]:
+                    barriers[relay].append(v.chain.hops())
+    return barriers
 
 
 def _rationale(source: Tool, sensitive: Tool | None, sink: Tool, cross: bool) -> str:
