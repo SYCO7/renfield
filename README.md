@@ -483,6 +483,8 @@ confused-deputy stacks above. Self-contained, offline, safe.
   GitHub code-scanning upload, copy-paste CI workflow, and a rendered demo video.
 - **v0.7 — minimal-fix remediation** *(done)*: `remediate` computes the smallest
   capability cut that breaks every proven chain and re-analyses to prove 0 remain.
+- **v0.8 — `remediate --patch`** *(done)*: emits the FIXED MCP config (offending
+  server(s) removed) plus a diff — you get the patched config, not just advice.
 - **v0.9 — one-shot `audit` + universal agent discovery + MCP-server mode** *(done)*:
   `ren audit` runs scan→prove→fix in one enumeration; auto-detects any agent's MCP
   config (`ren agents`); `ren serve` exposes Renfield as an MCP server (self-excluding)
