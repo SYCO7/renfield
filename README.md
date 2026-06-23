@@ -352,6 +352,33 @@ calls `renfield_audit` and gets structured findings + the minimal fix. Exposed t
 `renfield_audit`, `renfield_scan`, `renfield_verify`, `renfield_remediate`. Works in
 Claude Code, Cursor, Cline, Windsurf, Continue, VS Code, Zed — any MCP client.
 
+### Block it at runtime — the provenance-gating proxy 🛡️
+
+Everything above *finds* the problem. `ren proxy` **stops** it. The proxy is an MCP
+server that fronts the agent's real servers, tracks taint as calls happen, and
+**denies the lethal action at call time**: once the agent has read untrusted content,
+an external-sink / destructive / auth-action call is blocked (fail-closed) instead of
+leaking. Point the agent at the proxy, and the proxy at the real config:
+
+```jsonc
+{
+  "mcpServers": {
+    "guarded": { "command": "ren", "args": ["proxy", "path/to/real-mcp-config.json"] }
+  }
+}
+```
+
+```
+[renfield-proxy] BLOCKED send_email: external/destructive action attempted after
+                 untrusted content was ingested (lethal-trifecta gate)
+```
+
+Policies: `--policy trifecta` (default — block any dangerous action after untrusted
+ingest) or `--policy dataflow` (block only when tainted data is in the call args).
+`--mode flag` logs instead of blocking; `--allow <tool>` whitelists. Mount **only**
+the proxy (not the backends directly), or the gate is bypassed. This is the defensive
+runtime that *enforces* what `remediate` recommends.
+
 ## Attack classes proven
 
 | Class | Sink | How it's proven (real side effect) |
@@ -454,7 +481,11 @@ confused-deputy stacks above. Self-contained, offline, safe.
   load-bearing tool from the cut and forces the fix downstream (gate the relay/sink,
   not the source); `--prove` surfaces taint barriers — relay tools that laundered a
   proven exploit and should be gated too.
-- **v1.6 — provenance-gated MCP proxy (enforce the barriers at runtime)** (planned).
+- **v1.6 — provenance-gated MCP proxy** *(done)*: `ren proxy` fronts the agent's
+  real servers and **blocks the lethal action at call time** — once untrusted
+  content is read, an external/destructive call is denied (or flagged). The
+  defensive runtime that *enforces* what `remediate` recommends.
+- **v1.7 — proxy audit log + per-session provenance report** (planned).
 
 ## Ethics / legal
 
