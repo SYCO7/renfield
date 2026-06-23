@@ -34,13 +34,20 @@ betrayal.
 
 ```
 1. ENUMERATE   connect to every MCP server in the agent's config, list its tools
-2. CLASSIFY    tag each tool: untrusted-source / sensitive-read / external-sink
+2. CLASSIFY    tag each tool: untrusted-source / sensitive-read / external/destructive-sink
 3. GRAPH       find cross-server chains  source -> sensitive -> sink  (the lethal trifecta)
 4. PROVE       plant a payload in a sandbox, run the chain, confirm the canary
                secret actually reaches the sink  (observed side effect, not text-grading)
-5. MEASURE     with --driver llm, a REAL model decides whether to walk the chain
-               -> genuine indirect-prompt-injection susceptibility
-6. REPORT      ranked findings mapped to OWASP MCP / Agentic Top 10 + severity, exit code
+5. ATTRIBUTE   reconstruct the taint path (incl. multi-hop laundering) and, with a
+               benign control, attribute the leak to the untrusted source
+6. MEASURE     a REAL model decides whether to walk the chain, across a library of
+               injection techniques -> genuine technique-level susceptibility
+7. FIX         compute the minimal capability cut that breaks every chain (taint-aware,
+               source-protecting) and emit the patched config
+8. ENFORCE     `ren proxy` fronts the real servers and BLOCKS the lethal action at
+               runtime once untrusted content has been ingested
+   REPORT      every stage exports text / JSON / SARIF / HTML, mapped to OWASP MCP /
+               Agentic Top 10, with a CI exit code
 ```
 
 ## Why it exists — the gap
@@ -204,6 +211,25 @@ ren remediate my-agent.json --prove --driver ollama     # also flag taint-barrie
 ```
 
 You get the patched config, not just advice. Re-scan it to confirm 0 critical chains.
+
+## Commands
+
+| Command | What it does |
+|---------|--------------|
+| `ren quickstart` | zero-setup demo against the bundled vulnerable lab |
+| `ren agents` | list installed coding-agent MCP configs Renfield can audit |
+| `ren scan <cfg>` | capability map + candidate cross-server chains + tool-shadowing |
+| `ren verify <cfg>` | PROVE critical chains by side effect (`--causality`, `--format text/json/sarif/html`) |
+| `ren audit <cfg>` | one-shot scan → prove → minimal-fix in one enumeration (CI exit code) |
+| `ren redteam <cfg>` | prove each chain across a library of injection techniques |
+| `ren compare <cfg>` | model susceptibility leaderboard (`--matrix` for model × technique) |
+| `ren remediate <cfg>` | minimal capability cut (`--keep`, `--prove` taint barriers, `--patch`) |
+| `ren serve` | run Renfield AS an MCP server (any agent calls the pentest as a tool) |
+| `ren proxy <cfg>` | provenance-gating MCP proxy — BLOCK the lethal action at runtime |
+| `ren proxy-report <log>` | render a per-session provenance report from a proxy audit log |
+
+Config is auto-detected when omitted (any installed agent). Most commands accept
+`-o <file>` and exit non-zero when an exploit is proven, so they gate CI.
 
 ## Use it in CI 🛡️ (GitHub code scanning)
 
