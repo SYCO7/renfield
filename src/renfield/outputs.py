@@ -127,9 +127,61 @@ def verdicts_to_sarif(verdicts, config_path: str) -> dict:
     }
 
 
+def _esc(s) -> str:
+    return (str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
+
+
+def verdicts_to_html(verdicts, config_path: str) -> str:
+    """A self-contained, dependency-free HTML evidence report (shareable artifact)."""
+    proven = sum(1 for v in verdicts if v.exploited)
+    cards = []
+    for i, v in enumerate(verdicts, 1):
+        ok = v.exploited
+        prov = getattr(v, "provenance", None)
+        taint = f"<div class='taint'>{_esc(prov.path())}</div>" if (prov and ok) else ""
+        cards.append(
+            f"<div class='card {'bad' if ok else 'ok'}'>"
+            f"<div class='hd'><span class='tag'>{'PROVEN' if ok else 'not proven'}</span>"
+            f"<span class='cls'>{_esc(v.attack_class)}</span>#{i}</div>"
+            f"<div class='chain'>{_esc(v.chain.hops())}</div>"
+            f"<div class='ev'>{_esc(v.evidence) or '—'}</div>"
+            f"{taint}"
+            f"<div class='owasp'>{_esc(', '.join(v.chain.owasp))}</div>"
+            f"</div>"
+        )
+    return f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Renfield report — {_esc(config_path)}</title>
+<style>
+:root{{color-scheme:dark}}
+body{{font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;background:#0d1117;color:#c9d1d9;margin:0;padding:2rem}}
+h1{{font-size:1.4rem;margin:0 0 .25rem}} .sub{{color:#8b949e;margin-bottom:1.5rem}}
+.summary{{font-size:1.1rem;margin-bottom:1.5rem}}
+.summary b{{color:{'#f85149' if proven else '#3fb950'}}}
+.card{{border:1px solid #30363d;border-left-width:4px;border-radius:6px;padding:1rem;margin:.75rem 0;background:#161b22}}
+.card.bad{{border-left-color:#f85149}} .card.ok{{border-left-color:#3fb950}}
+.hd{{display:flex;gap:.75rem;align-items:center;margin-bottom:.5rem}}
+.tag{{font-weight:700;text-transform:uppercase;font-size:.75rem;padding:.1rem .5rem;border-radius:4px;background:#21262d}}
+.card.bad .tag{{color:#f85149}} .card.ok .tag{{color:#3fb950}}
+.cls{{color:#d29922}} .hd #{{margin-left:auto}}
+.chain{{font-weight:600;margin:.25rem 0}} .ev{{color:#8b949e}}
+.taint{{margin-top:.5rem;color:#58a6ff}} .owasp{{margin-top:.5rem;font-size:.8rem;color:#6e7681}}
+footer{{margin-top:2rem;color:#6e7681;font-size:.8rem}}
+</style></head><body>
+<h1>🩸 Renfield — agent pentest report</h1>
+<div class="sub">target: {_esc(config_path)} · renfield {_esc(__version__)}</div>
+<div class="summary"><b>{proven}/{len(verdicts)}</b> chain(s) PROVEN exploitable by real side effect.</div>
+{''.join(cards)}
+<footer>Proven by observed side effect (canary egress / integrity loss / privileged action), not text-grading.
+Only test agent stacks you own or are authorized to assess.</footer>
+</body></html>"""
+
+
 def render(verdicts, config_path: str, fmt: str) -> str:
     if fmt == "json":
         return json.dumps(verdicts_to_json(verdicts, config_path), indent=2)
     if fmt == "sarif":
         return json.dumps(verdicts_to_sarif(verdicts, config_path), indent=2)
+    if fmt == "html":
+        return verdicts_to_html(verdicts, config_path)
     raise ValueError(f"unknown format {fmt}")

@@ -89,6 +89,7 @@ def _chain_dict(c, *, exploited=None, attack_class=None, evidence=None, provenan
 
 
 def tool_scan(config_path, **_):
+    from .shadows import find_shadows
     servers, dropped, errors = _prepare(config_path)
     chains = build_chains(servers)
     crit = [c for c in chains if c.severity == "CRITICAL"]
@@ -100,6 +101,10 @@ def tool_scan(config_path, **_):
         "capability_map": _capability_map(servers),
         "candidate_chains": len(chains),
         "critical_chains": [_chain_dict(c) for c in crit],
+        "tool_shadowing": [
+            {"name": sh.name, "servers": sh.servers, "severity": sh.severity}
+            for sh in find_shadows(servers)
+        ],
     }
 
 

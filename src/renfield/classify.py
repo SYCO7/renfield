@@ -40,6 +40,13 @@ SINK_HINTS = (
     "consent", "approve", "grant", "authorize", "oauth",
 )
 
+# Tools that can destroy / overwrite data (integrity harm, not exfiltration).
+DESTRUCTIVE_HINTS = (
+    "delete", "remove", "destroy", "drop_table", "drop_database", "rmdir",
+    "unlink", "wipe", "purge", "truncate", "overwrite", "erase", "rm_file",
+    "delete_file", "delete_branch", "force_push", "reset_hard", "revoke",
+)
+
 
 def _matches(text: str, hints) -> bool:
     return any(h in text for h in hints)
@@ -57,6 +64,8 @@ def classify_tool(tool: Tool) -> set[Capability]:
         caps.add(Capability.SENSITIVE_READ)
     if _matches(name, SINK_HINTS) or _matches(desc, SINK_HINTS):
         caps.add(Capability.EXTERNAL_SINK)
+    if _matches(name, DESTRUCTIVE_HINTS) or _matches(desc, DESTRUCTIVE_HINTS):
+        caps.add(Capability.DESTRUCTIVE_SINK)
 
     if not caps:
         caps.add(Capability.BENIGN)

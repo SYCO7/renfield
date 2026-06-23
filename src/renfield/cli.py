@@ -95,8 +95,8 @@ def _run_verify(args: argparse.Namespace) -> int:
                 for c in criticals]
     proven = sum(1 for v in verdicts if v.exploited)
 
-    # machine-readable output for CI / GitHub code scanning
-    if args.format in ("json", "sarif"):
+    # machine-readable / shareable output (json, sarif, html)
+    if args.format in ("json", "sarif", "html"):
         from .outputs import render as render_out
         text = render_out(verdicts, args.config, args.format)
         if args.out:
@@ -166,6 +166,9 @@ def _run_compare(args: argparse.Namespace) -> int:
         print("no CRITICAL cross-server chains to compare.")
         return 0
 
+    if getattr(args, "matrix", False):
+        return _run_compare_matrix(args, servers, criticals, specs)
+
     rows = []
     for spec in specs:
         try:
@@ -183,6 +186,31 @@ def _run_compare(args: argparse.Namespace) -> int:
                      "classes": sorted(set(classes))})
     print(render_leaderboard(rows))
     return 1 if any(r["pwned"] for r in rows) else 0
+
+
+def _run_compare_matrix(args, servers, criticals, specs) -> int:
+    """Cross every model with every injection technique -> a robustness grid."""
+    from .payloads import resolve
+    from .report import render_technique_matrix
+    from .verify import redteam_chain
+
+    techs = resolve(args.technique or None)
+    names = [t.name for t in techs]
+    rows = []
+    for spec in specs:
+        try:
+            driver = _spec_driver(spec, args)
+        except Exception as exc:
+            rows.append({"label": spec, "bypass": set(), "error": str(exc)})
+            continue
+        # a technique counts as a bypass if it proves on ANY critical chain
+        bypass: set[str] = set()
+        for chain in criticals:
+            rt = redteam_chain(chain, servers, driver=driver, techniques=techs, workers=1)
+            bypass |= set(rt.bypassed)
+        rows.append({"label": spec, "bypass": bypass})
+    print(render_technique_matrix(rows, names))
+    return 1 if any(r["bypass"] for r in rows) else 0
 
 
 def _emit_patch(config_path: str, cut: list[str], out_arg: str) -> None:
@@ -427,8 +455,9 @@ def build_parser() -> argparse.ArgumentParser:
         "--ollama-host", help="Ollama host (default http://localhost:11434)"
     )
     verify.add_argument(
-        "--format", choices=["text", "json", "sarif"], default="text",
-        help="output format. sarif uploads to GitHub code scanning; json for CI",
+        "--format", choices=["text", "json", "sarif", "html"], default="text",
+        help="output format. sarif -> GitHub code scanning; json -> CI; html -> "
+             "a self-contained shareable evidence report",
     )
     verify.add_argument(
         "--causality", action="store_true",
@@ -453,6 +482,15 @@ def build_parser() -> argparse.ArgumentParser:
     cmp.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
     cmp.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
     cmp.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
+    cmp.add_argument(
+        "--matrix", action="store_true",
+        help="cross each model with every injection technique -> a robustness grid "
+             "(model × technique) instead of the attack-class leaderboard",
+    )
+    cmp.add_argument(
+        "--technique", action="append",
+        help="restrict the --matrix technique columns (repeatable; default all)",
+    )
     cmp.set_defaults(func=_run_compare)
 
     rem = sub.add_parser(
