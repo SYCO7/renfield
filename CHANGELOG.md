@@ -3,6 +3,15 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.3.0]
+- **Multi-hop taint tracking** — taint is followed through *arbitrary intermediate
+  tool results*, not just the fixed source → sensitive → sink shape. Detects taint
+  *laundering* (the agent stashing data in a notes/store tool and reading it back
+  before exfil). Driver- and length-agnostic; surfaced in `verify` text and JSON
+  (`provenance.multihop`). New `notes.save_note/load_note` relay lab role.
+- Verification now exposes the **whole mesh** to the agent driver (a real agent can
+  call any tool), which is what makes multi-hop laundering observable.
+
 ## [1.2.0]
 - **Credential / Token-Reuse confused deputy** — new attack class proven by side
   effect: the user's credential is *replayed to authenticate a privileged action*

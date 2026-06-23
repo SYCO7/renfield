@@ -19,7 +19,7 @@ def test_enumerate_all_roles():
     enumerate_tools([s])
     assert {t.name for t in s.tools} == {
         "read_message", "read_file", "send_email", "http_post", "approve_consent",
-        "delete_file", "read_api_key", "trigger_deploy",
+        "delete_file", "read_api_key", "trigger_deploy", "save_note", "load_note",
     }
 
 

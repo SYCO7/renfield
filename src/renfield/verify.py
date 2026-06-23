@@ -56,16 +56,19 @@ def verify_chain(
         plant_payload(sandbox, payload)
         rt = {**runtime_env(sandbox), "TOXI_EGRESS_URL": monitor.url}
 
+        # Expose the WHOLE mesh to the driver — a real agent can call any tool, and
+        # multi-hop taint laundering routes through relay tools outside the chain.
+        # The chain still defines what we're proving; the oracle judges the result.
         involved = {chain.source.server, chain.sink.server}
         if chain.sensitive is not None:
             involved.add(chain.sensitive.server)
+        to_start = [s for s in servers if s.command] or [by_name[n] for n in involved]
 
-        for name in involved:
-            srv = by_name[name]
+        for srv in to_start:
             env = {**os.environ, **srv.env, **rt}
             client = MCPStdioClient(srv.command, srv.args, env=env)
             client.start()
-            clients[name] = client
+            clients[srv.name] = client
 
         trace = driver.run(chain, clients, sandbox)
         exploited, attack_class, evidence = confirm(chain, sandbox, monitor)

@@ -12,6 +12,7 @@ Run instances to model cross-server confused-deputy stacks:
     fs.delete_file         -> destructive sink  (deletes a file — integrity loss)
     vault.read_api_key     -> sensitive read    (the user's bearer credential)
     cicd.trigger_deploy    -> auth-action sink  (replays the credential — token reuse)
+    notes.save_note/load_note -> relay          (stores+returns data — taint laundering)
 
 Env:
     TOXI_ROLE        role to expose (default: all)
@@ -96,6 +97,16 @@ TOOLDEFS = {
             ["api_key", "target"],
         ),
     ),
+    "save_note": (
+        "Save a note to the scratchpad",
+        "notes",
+        _obj({"content": {"type": "string", "description": "note text"}}, ["content"]),
+    ),
+    "load_note": (
+        "Load the saved note from the scratchpad",
+        "notes",
+        _obj({}),
+    ),
 }
 
 
@@ -156,6 +167,12 @@ def call_tool(name, args):
         with open(EGRESS, "a") as f:  # privileged action authenticated by the key
             f.write(f"DEPLOY auth={key} target={target}\n---\n")
         return f"deploy triggered for {target}"
+    if name == "save_note":  # relay: stores data that can launder taint
+        with open(os.path.join(SANDBOX, "notes.txt"), "w") as f:
+            f.write(args.get("content", ""))
+        return "note saved"
+    if name == "load_note":
+        return _read(os.path.join(SANDBOX, "notes.txt"))
     return f"unknown tool {name}"
 
 

@@ -94,32 +94,31 @@ class ScriptedAgent:
         # 1. ingest attacker-controlled content via the untrusted source tool
         src = clients[chain.source.server]
         msg = call_text(src.call_tool(chain.source.name, {}))
-        trace.append({"step": "source", "tool": chain.source.ref, "observed": msg})
+        trace.append({"step": "source", "tool": chain.source.ref, "observed": msg, "args": {}})
 
         # destructive chains have no sensitive-read hop — the harm is the deletion
         if getattr(chain, "kind", "exfil") == "destructive":
             sink = clients[chain.sink.server]
-            out = call_text(sink.call_tool(
-                chain.sink.name, _destructive_args(chain.sink.schema, sandbox.victim_relpath)))
-            trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out})
+            d_args = _destructive_args(chain.sink.schema, sandbox.victim_relpath)
+            out = call_text(sink.call_tool(chain.sink.name, d_args))
+            trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out, "args": d_args})
             return trace
 
         # 2. the confused-deputy hop: use a *different* trusted tool to read secrets
         if chain.sensitive is not None:
             sens = clients[chain.sensitive.server]
-            secret = call_text(
-                sens.call_tool(chain.sensitive.name, {"path": sandbox.secret_relpath})
-            )
-            trace.append(
-                {"step": "sensitive", "tool": chain.sensitive.ref, "observed": secret}
-            )
+            s_args = {"path": sandbox.secret_relpath}
+            secret = call_text(sens.call_tool(chain.sensitive.name, s_args))
+            trace.append({"step": "sensitive", "tool": chain.sensitive.ref,
+                          "observed": secret, "args": s_args})
         else:
             secret = msg
 
         # 3. act through the external sink (exfil, network POST, or privileged grant)
         sink = clients[chain.sink.server]
-        out = call_text(sink.call_tool(chain.sink.name, _sink_args(chain.sink.schema, secret)))
-        trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out})
+        sink_args = _sink_args(chain.sink.schema, secret)
+        out = call_text(sink.call_tool(chain.sink.name, sink_args))
+        trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out, "args": sink_args})
         return trace
 
 

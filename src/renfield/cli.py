@@ -133,6 +133,10 @@ def _run_verify(args: argparse.Namespace) -> int:
         print(f"          oracle: {_safe(verdict.evidence) or '—'}")
         if verdict.provenance is not None and verdict.exploited:
             print(f"          taint:  {_safe(verdict.provenance.path())}")
+            flow = verdict.provenance.flow
+            if flow is not None and flow.laundered:
+                print(f"          multi-hop: {_safe(flow.path_str())}  "
+                      f"(laundered through {len(flow.relays)} relay tool(s))")
             if verdict.provenance.causally_attributed is not None:
                 print(f"          {_safe(verdict.provenance.summary())}")
         print()

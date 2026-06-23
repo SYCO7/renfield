@@ -40,6 +40,7 @@ class Provenance:
     # causal attribution (None = not tested; True/False = differential result)
     causally_attributed: bool | None = None
     causality_note: str = ""
+    flow: "TaintFlow | None" = None   # multi-hop taint flow over the whole trace
     notes: list[str] = field(default_factory=list)
 
     @property
@@ -58,6 +59,9 @@ class Provenance:
         if not self.tainted:
             return f"provenance: incomplete taint path — {self.path()}"
         base = f"provenance: tainted flow {self.path()}"
+        if self.flow is not None and self.flow.laundered:
+            base += (f" — laundered through {len(self.flow.relays)} relay tool(s): "
+                     f"{self.flow.path_str()}")
         if self.causally_attributed is True:
             return base + " — leak causally attributed to the untrusted source " \
                           "(benign control did not leak)"
@@ -87,6 +91,7 @@ def _any_observed(trace, needle: str) -> bool:
 def build_provenance(chain, sandbox, trace, monitor=None) -> Provenance:
     """Reconstruct the labelled taint path from a single verification run."""
     from .oracle import _read_log  # local import avoids a cycle
+    from .taint import track_taint
 
     log = _read_log(sandbox)
     canary = sandbox.canary
@@ -97,6 +102,13 @@ def build_provenance(chain, sandbox, trace, monitor=None) -> Provenance:
     secret_at_sink = (canary in log) or bool(monitor and monitor.captured(canary))
     causal_order = _observed_before(trace, token, canary) if (token and canary) else secret_read
 
+    flow = track_taint(
+        trace, source_token=token, canary=canary,
+        source_ref=chain.source.ref,
+        sensitive_ref=chain.sensitive.ref if chain.sensitive else None,
+        sink_ref=chain.sink.ref,
+    )
+
     prov = Provenance(
         source_tool=chain.source.ref,
         sensitive_tool=chain.sensitive.ref if chain.sensitive else None,
@@ -105,6 +117,7 @@ def build_provenance(chain, sandbox, trace, monitor=None) -> Provenance:
         secret_read=secret_read,
         secret_at_sink=secret_at_sink,
         causal_order=causal_order,
+        flow=flow,
     )
     if not source_ingested:
         prov.notes.append("attacker source_token not seen in trace — origin unconfirmed")
