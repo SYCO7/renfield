@@ -7,10 +7,12 @@ The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 - **Configurable Ollama per-turn timeout** via `RENFIELD_OLLAMA_TIMEOUT` (seconds;
   default 120). Grammar-constrained tool-calling on CPU can run several seconds per
   token, blowing past the old hard-coded limit — local users can now raise it.
-- **First real measured run** documented in the README: `ren verify` against the
-  bundled lab with qwen2.5:3b scored 1/3 chains proven, and the model *hallucinated*
-  an exfiltration the side-effect oracle correctly rejected — the case for judging by
-  observed side effect, not model text.
+- **First real measured runs** documented in the README: `ren verify` with qwen2.5:3b
+  scored 1/3 chains proven, and the model *hallucinated* an exfiltration the side-effect
+  oracle correctly rejected. The `ren redteam` matrix with the smaller qwen2.5:0.5b
+  scored 21/21 "resisted" — but the trace shows it was too weak to chain the tool calls,
+  not refusing: capability gates exploitability, and side-effect grounding tells the
+  difference between "safe" and "incapable".
 
 ## [1.7.0]
 - **Proxy audit log + per-session provenance report.** The gating proxy now records
