@@ -8,6 +8,7 @@ with a clear message so the CLI can tell the user to `ollama serve`.
 from __future__ import annotations
 
 import json
+import os
 import urllib.error
 import urllib.request
 
@@ -20,8 +21,15 @@ class OllamaError(RuntimeError):
 
 
 def chat(model: str, messages: list[dict], tools: list[dict], host: str = DEFAULT_HOST,
-         timeout: float = 120.0) -> dict:
-    """One non-streaming /api/chat turn. Returns the response 'message' dict."""
+         timeout: float | None = None) -> dict:
+    """One non-streaming /api/chat turn. Returns the response 'message' dict.
+
+    The per-turn timeout defaults to 120s but is overridable via the
+    RENFIELD_OLLAMA_TIMEOUT env var — grammar-constrained tool-calling on CPU can
+    be far slower than plain generation, so local users may need to raise it.
+    """
+    if timeout is None:
+        timeout = float(os.environ.get("RENFIELD_OLLAMA_TIMEOUT", "120"))
     payload = json.dumps(
         {"model": model, "messages": messages, "tools": tools, "stream": False}
     ).encode()

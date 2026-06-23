@@ -3,6 +3,15 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.7.1]
+- **Configurable Ollama per-turn timeout** via `RENFIELD_OLLAMA_TIMEOUT` (seconds;
+  default 120). Grammar-constrained tool-calling on CPU can run several seconds per
+  token, blowing past the old hard-coded limit — local users can now raise it.
+- **First real measured run** documented in the README: `ren verify` against the
+  bundled lab with qwen2.5:3b scored 1/3 chains proven, and the model *hallucinated*
+  an exfiltration the side-effect oracle correctly rejected — the case for judging by
+  observed side effect, not model text.
+
 ## [1.7.0]
 - **Proxy audit log + per-session provenance report.** The gating proxy now records
   every proxied call (`--audit-log <path.jsonl>`, durable) and can emit a session

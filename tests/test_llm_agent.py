@@ -98,3 +98,39 @@ def test_ollama_provider_loop_executes_tools():
 def test_build_provider_defaults():
     assert build_provider("ollama").model == "qwen2.5:7b"
     assert build_provider("openai").model == "gpt-4o"
+
+
+# --- RENFIELD_OLLAMA_TIMEOUT env override (per-turn timeout for slow CPU) ---- #
+def test_chat_timeout_defaults_to_120(monkeypatch):
+    from renfield import llm
+    captured = {}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'{"message":{"role":"assistant","content":"ok"}}'
+
+    def fake_urlopen(req, timeout=None):
+        captured["timeout"] = timeout
+        return _Resp()
+
+    monkeypatch.delenv("RENFIELD_OLLAMA_TIMEOUT", raising=False)
+    monkeypatch.setattr(llm.urllib.request, "urlopen", fake_urlopen)
+    llm.chat("m", [], [])
+    assert captured["timeout"] == 120.0
+
+
+def test_chat_timeout_env_override(monkeypatch):
+    from renfield import llm
+    captured = {}
+
+    class _Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): return False
+        def read(self): return b'{"message":{}}'
+
+    monkeypatch.setenv("RENFIELD_OLLAMA_TIMEOUT", "600")
+    monkeypatch.setattr(llm.urllib.request, "urlopen",
+                        lambda req, timeout=None: captured.update(timeout=timeout) or _Resp())
+    llm.chat("m", [], [])
+    assert captured["timeout"] == 600.0
