@@ -357,6 +357,7 @@ Claude Code, Cursor, Cline, Windsurf, Continue, VS Code, Zed — any MCP client.
 | **Network Exfiltration** | HTTP POST | canary observed in an **outbound request** to a live listener — data physically left the box |
 | **OAuth-Consent Confused Deputy** | consent grant | agent used its own authority to approve an attacker app's OAuth consent |
 | **Destructive Action** | delete / overwrite | attacker content steered the agent to destroy data — proven by the integrity-target file being gone |
+| **Credential / Token Reuse** | authenticated action | the user's credential was replayed to authenticate a privileged action (e.g. a deploy) for the attacker — confused deputy, proven by the credential in the action log |
 
 Plus a purely-static finding that needs no execution — **tool shadowing**: when two
 servers expose the same tool name, a colliding server can intercept calls meant for
@@ -426,7 +427,10 @@ confused-deputy stacks above. Self-contained, offline, safe.
   attack class (proven by integrity loss), static **tool-shadowing** detection,
   a **model × injection-technique** robustness grid (`compare --matrix`), and a
   self-contained **HTML evidence report** (`verify --format html`).
-- **v1.2 — credential/token-reuse class + taint over multi-hop tool results** (planned).
+- **v1.2 — credential/token-reuse confused-deputy class** *(done)*: the user's
+  credential is replayed to authenticate a privileged action for the attacker —
+  proven by side effect, distinct from passive exfiltration.
+- **v1.3 — multi-hop taint over tool results** (planned).
 
 ## Ethics / legal
 

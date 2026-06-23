@@ -38,6 +38,8 @@ SINK_HINTS = (
     "create_gist", "create_release", "http", "request", "webhook",
     "email_send", "send_email", "make_request", "notify", "outbound",
     "consent", "approve", "grant", "authorize", "oauth",
+    # authenticated-action sinks: replaying a credential to act as the user
+    "deploy", "trigger", "invoke", "dispatch", "provision", "run_job",
 )
 
 # Tools that can destroy / overwrite data (integrity harm, not exfiltration).
