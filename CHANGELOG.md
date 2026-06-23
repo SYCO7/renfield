@@ -3,6 +3,16 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.6.0]
+- **Provenance-gating MCP proxy** (`ren proxy <config>`) — Renfield's first
+  *defensive runtime*. It fronts the agent's real MCP servers, tracks taint as
+  calls happen, and **blocks the lethal action at call time**: once untrusted
+  content has been read, an external-sink / destructive / auth-action call is
+  denied (`block`, fail-closed) or logged (`flag`). Policies: `trifecta` (block
+  any dangerous action after untrusted ingest) and `dataflow` (block only when
+  tainted data is in the call arguments). `--allow` whitelists specific tools.
+  Point the agent at the proxy; the proxy fronts the real config.
+
 ## [1.5.0]
 - **Taint-aware remediation.** `remediate --keep <tool>` protects a load-bearing
   tool (e.g. the agent's whole-purpose source) from the cut, forcing the minimal

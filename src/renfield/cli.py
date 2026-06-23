@@ -444,6 +444,16 @@ def _run_serve(args: argparse.Namespace) -> int:
     return serve()
 
 
+def _run_proxy(args: argparse.Namespace) -> int:
+    """Run the provenance-gating MCP proxy in front of the agent's real servers."""
+    from .proxy import GatingProxy, serve
+    if not _resolve_config(args):
+        return 2
+    servers = load_config(args.config)
+    proxy = GatingProxy(servers, policy=args.policy, mode=args.mode, allow=args.allow or ())
+    return serve(proxy)
+
+
 def _run_agents(args: argparse.Namespace) -> int:
     """List every installed coding-agent MCP config Renfield can audit."""
     from .discover import discover_all
@@ -637,6 +647,27 @@ def build_parser() -> argparse.ArgumentParser:
              "(add { command: 'ren', args: ['serve'] } to the agent's mcpServers)",
     )
     serve.set_defaults(func=_run_serve)
+
+    proxy = sub.add_parser(
+        "proxy",
+        help="run a provenance-GATING MCP proxy in front of the real servers — "
+             "ENFORCES the taint barriers at runtime (point the agent at the proxy)",
+    )
+    proxy.add_argument("config", nargs="?", help="path to the backend MCP config (auto-detected if omitted)")
+    proxy.add_argument(
+        "--policy", choices=["trifecta", "dataflow"], default="trifecta",
+        help="trifecta = block any external/destructive action after untrusted content "
+             "is read; dataflow = block only when tainted data is in the call arguments",
+    )
+    proxy.add_argument(
+        "--mode", choices=["block", "flag"], default="block",
+        help="block = deny the dangerous call (fail-closed); flag = allow but log",
+    )
+    proxy.add_argument(
+        "--allow", action="append", metavar="TOOL", default=[],
+        help="always allow this tool through the gate (repeatable)",
+    )
+    proxy.set_defaults(func=_run_proxy)
 
     agents = sub.add_parser(
         "agents",
