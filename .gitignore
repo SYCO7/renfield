@@ -28,3 +28,4 @@ renfield.json
 .idea/
 *.swp
 .DS_Store
+.mcp.json

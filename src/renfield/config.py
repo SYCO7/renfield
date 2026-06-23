@@ -20,7 +20,8 @@ from .models import Server, Tool
 def load_config(path: str | Path) -> list[Server]:
     """Parse an MCP config file into Server objects (without tools)."""
     data = json.loads(Path(path).read_text())
-    block = data.get("mcpServers") or data.get("servers") or {}
+    nested = data.get("mcp") if isinstance(data.get("mcp"), dict) else {}
+    block = data.get("mcpServers") or data.get("servers") or nested.get("servers") or {}
     servers: list[Server] = []
     for name, spec in block.items():
         spec = spec or {}

@@ -51,7 +51,7 @@ Prior art splits into buckets that never meet. Renfield lives in the seam.
 |------|------|--------|
 | mcp-scan / SkillSpector | flags one tool's description | no cross-server, no execution |
 | MCPhound | maps cross-server paths | **never executes** |
-| Snyk Toxic Flow Analysis | models flow graph + score | no execution |
+| Snyk agent-scan / Toxic Flow | **runs** MCP servers, flags toxic flows + score | **no side-effect proof** — flags the flow, never observes a canary actually leave the box; no model-susceptibility score |
 | VIPER-MCP | runs + proves by side effect | **single-server only**, no confused-deputy |
 | promptfoo / AgentDojo | runs live | "was tool called", not real egress; single-server |
 
@@ -59,11 +59,14 @@ Nobody fuses **cross-server pathfinding + confused-deputy payload + live side-ef
 proof + a real-model susceptibility test, run against the defender's own stack** —
 **and then hands you the fixed config.** That intersection is Renfield.
 
-**What Renfield does that the others don't:** scanners (mcp-scan, Snyk, Cisco) find
-issues statically; benchmarks (AgentDojo, promptfoo) rank models on synthetic tasks.
-Renfield is the one that **proves a cross-server chain by a real side effect on your
-own stack, then computes and emits the minimal config fix** (`remediate --patch`).
-It does not try to replace those platforms — it does the one job they don't.
+**What Renfield does that the others don't:** scanners (mcp-scan, Cisco) flag issues
+statically; Snyk's agent-scan even *runs* the servers to flag toxic flows — but none
+**prove** the flow by watching a canary secret physically reach an external sink, and
+none score whether **your** model actually walks the chain. Benchmarks (AgentDojo,
+promptfoo) rank models on synthetic tasks, not your real mesh. Renfield is the one
+that **proves a cross-server chain by a real side effect on your own stack, ranks
+model susceptibility, then computes and emits the minimal config fix**
+(`remediate --patch`). It does not replace those platforms — it does the job they don't.
 
 > **Honest framing.** Side-effect oracles and confused-deputy payload synthesis each
 > exist *separately* elsewhere. Renfield's contribution is **fusing** them — cross-server,
@@ -91,17 +94,29 @@ Same loop, new target surface:
 ## Install & first run (one minute, no API key, no GPU)
 
 ```bash
-git clone https://github.com/SYCO7/renfield && cd renfield
-pip install -e .          # zero runtime deps
-ren quickstart            # runs the bundled lab end-to-end: scan -> prove -> fix
+pip install renfield-mcp     # zero runtime deps  (PyPI distribution name)
+# or from source:
+git clone https://github.com/SYCO7/renfield && cd renfield && pip install -e .
+
+ren quickstart               # runs the bundled lab end-to-end: scan -> prove -> fix
 ```
+
+> **Name note:** the project / CLI is **Renfield** (`ren`); the PyPI *package* is
+> `renfield-mcp` (the bare `renfield` name on PyPI belongs to an unrelated ham-radio
+> tool). `pip install renfield-mcp` gives you the `ren` command.
 
 `ren quickstart` needs nothing configured — it proves 3 attack classes against the
-bundled vulnerable lab and prints the minimal fix. Then point it at your own agent:
+bundled vulnerable lab and prints the minimal fix. Then point it at your own agent —
+**or let it find your agent automatically:**
 
 ```bash
-ren verify path/to/your-mcp-config.json
+ren audit                 # auto-detect your agent's MCP config, then scan -> prove -> fix
+ren audit path/to/mcp-config.json --patch    # explicit path + emit the fixed config
+ren agents                # list every installed agent's MCP config Renfield can audit
 ```
+
+`ren audit` is the one-shot: it enumerates the mesh **once** and runs scan → prove →
+minimal-fix, exiting non-zero when any chain is proven (so it gates CI or a pentest).
 
 See **[SECURITY.md](SECURITY.md)** for the trust model before testing real stacks.
 
@@ -253,22 +268,54 @@ The agent loop is provider-pluggable, so it's fully tested without any live mode
 or API key (injected fake "susceptible" and "resistant" providers in
 `tests/test_llm_agent.py`).
 
-### Test a real agent (Claude Code / Cursor / Cline)
+### Works with ANY coding agent
 
-Renfield reads the standard `mcpServers` config those tools use — point it at that
-file and it tests the **real** server mesh, then drive it with whatever model that
-agent runs:
+Every MCP-capable agent stores its mesh in an `mcpServers` (or `servers`) JSON file.
+Renfield reads that standard shape, so it tests the **real** server mesh of whatever
+agent you run. `ren audit` (no path) auto-detects the installed agent; `ren agents`
+lists what it found.
+
+| Agent | Config it reads |
+|-------|-----------------|
+| Claude Code | `.mcp.json` (project), `~/.claude.json` (user) |
+| Claude Desktop | `claude_desktop_config.json` |
+| Cursor | `.cursor/mcp.json`, `~/.cursor/mcp.json` |
+| Windsurf | `~/.codeium/windsurf/mcp_config.json` |
+| Cline / Roo | `mcp_settings.json` |
+| Continue | `~/.continue/config.json` |
+| VS Code | `.vscode/mcp.json` |
+| Zed / Gemini CLI | `settings.json` |
+| anything else | pass the path — any file with an `mcpServers` block works |
 
 ```bash
-ren verify .mcp.json                  # Claude Code project config
-ren verify ~/.cursor/mcp.json         # Cursor
+ren audit                             # auto-detect the installed agent, full pipeline
+ren audit ~/.cursor/mcp.json          # Cursor, explicit
 # drive with the agent's own model (e.g. Claude) to mimic real susceptibility:
-ren verify .mcp.json --driver openai --base-url https://openrouter.ai/api/v1 \
+ren audit .mcp.json --driver openai --base-url https://openrouter.ai/api/v1 \
   --api-key $OPENROUTER_KEY --model anthropic/claude-3.5-sonnet
 ```
 
 > Scope: Renfield re-runs the attack against the agent's MCP servers with a model
 > you choose — it does not intercept the live agent process. Test only configs you own.
+
+### Run Renfield *inside* your agent (MCP server mode)
+
+Renfield is also an **MCP server**, so any agent can call the pentest as a tool — no
+context-switching to a terminal. Add it to the agent's own `mcpServers` (this entry
+is self-excluded, so Renfield never tests itself):
+
+```jsonc
+{
+  "mcpServers": {
+    "renfield": { "command": "ren", "args": ["serve"] }
+  }
+}
+```
+
+Then ask the agent: *"audit my agent's MCP config for confused-deputy chains."* It
+calls `renfield_audit` and gets structured findings + the minimal fix. Exposed tools:
+`renfield_audit`, `renfield_scan`, `renfield_verify`, `renfield_remediate`. Works in
+Claude Code, Cursor, Cline, Windsurf, Continue, VS Code, Zed — any MCP client.
 
 ## Attack classes proven
 
@@ -300,8 +347,11 @@ confused-deputy stacks above. Self-contained, offline, safe.
   GitHub code-scanning upload, copy-paste CI workflow, and a rendered demo video.
 - **v0.7 — minimal-fix remediation** *(done)*: `remediate` computes the smallest
   capability cut that breaks every proven chain and re-analyses to prove 0 remain.
-- **v0.8 — taint/provenance hints + HTML report** (planned).
-- **v0.9 — optional MCP-server wrapper** so other agents can call Renfield.
+- **v0.9 — one-shot `audit` + universal agent discovery + MCP-server mode** *(done)*:
+  `ren audit` runs scan→prove→fix in one enumeration; auto-detects any agent's MCP
+  config (`ren agents`); `ren serve` exposes Renfield as an MCP server (self-excluding)
+  so any agent can call the pentest as a tool.
+- **v1.0 — taint/provenance hints + HTML report** (planned).
 
 ## Ethics / legal
 
