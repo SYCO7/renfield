@@ -300,6 +300,62 @@ def _run_audit(args: argparse.Namespace) -> int:
     return 1 if proven else 0
 
 
+def _run_redteam(args: argparse.Namespace) -> int:
+    """Prove critical chains across a library of injection techniques.
+
+    The flagship measurement: not "is the agent exploitable?" but "which injection
+    *techniques* bypass this model on this mesh?" — a robustness profile, proven by
+    side effect. Meaningful with --driver ollama|openai; scripted is the control.
+    """
+    if not _resolve_config(args):
+        return 2
+    from .payloads import DEFAULT_SET, resolve
+    from .verify import redteam_chain
+
+    try:
+        techs = resolve(args.technique or DEFAULT_SET)
+    except KeyError as e:
+        print(str(e), file=sys.stderr)
+        return 2
+
+    servers = _prepare(args.config, None, live=True)
+    criticals = [c for c in build_chains(servers) if c.severity == "CRITICAL"][: args.max]
+    driver = _make_driver(args)
+    # live models: run techniques sequentially by default (don't hammer one endpoint)
+    workers = args.workers if args.workers else (1 if args.driver != "scripted" else None)
+
+    driver_label = "scripted (control — every technique proves)" if args.driver == "scripted" \
+        else f"{args.driver}:{args.model or 'default'}"
+    print("=" * 66)
+    print("renfield — injection-technique red-team matrix")
+    print("=" * 66)
+    print(f"driver: {driver_label}")
+    print(f"techniques: {', '.join(t.name for t in techs)}\n")
+    if not criticals:
+        print("no CRITICAL cross-server chains to red-team.")
+        return 0
+
+    any_bypassed = False
+    for i, chain in enumerate(criticals, 1):
+        rt = redteam_chain(chain, servers, driver=driver, techniques=techs, workers=workers)
+        bypassed = rt.bypassed
+        any_bypassed = any_bypassed or bool(bypassed)
+        print(f"#{i}  {_safe(chain.hops())}")
+        for r in rt.results:
+            mark = "BYPASSED" if r.verdict.exploited else "resisted"
+            klass = f"  [{r.verdict.attack_class}]" if r.verdict.exploited else ""
+            print(f"      {mark:<9} {r.technique:<16}{klass}")
+        score = len(rt.resisted)
+        print(f"      -> resisted {score}/{len(rt.results)} techniques "
+              f"({len(bypassed)} bypass: {', '.join(bypassed) or 'none'})\n")
+
+    print("-" * 66)
+    print("A technique BYPASSED means the model walked the chain to a real side "
+          "effect\nunder that framing. More resisted = more robust to prompt injection.")
+    print("=" * 66)
+    return 1 if any_bypassed else 0
+
+
 def _run_serve(args: argparse.Namespace) -> int:
     """Run Renfield AS an MCP server so any agent can call it as a tool."""
     from .mcp_server import serve
@@ -424,6 +480,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="also emit the FIXED MCP config + diff; pass a path or omit for <config>.fixed.json",
     )
     audit.set_defaults(func=_run_audit)
+
+    rt = sub.add_parser(
+        "redteam",
+        help="prove critical chains across a LIBRARY of injection techniques — "
+             "which styles bypass your model? (a robustness profile, not one yes/no)",
+    )
+    rt.add_argument("config", nargs="?", help="path to the MCP config JSON (auto-detected if omitted)")
+    rt.add_argument("--max", type=int, default=3, help="max critical chains to test")
+    rt.add_argument(
+        "--driver", choices=["scripted", "ollama", "openai"], default="scripted",
+        help="scripted = control (all techniques prove); ollama/openai = real model profile",
+    )
+    rt.add_argument("--model", help="model id (ollama=qwen2.5:7b, openai=gpt-4o)")
+    rt.add_argument("--api-key", help="API key (else OPENAI_API_KEY env)")
+    rt.add_argument("--base-url", help="OpenAI-compatible base URL (gateways)")
+    rt.add_argument("--ollama-host", help="Ollama host (default http://localhost:11434)")
+    rt.add_argument(
+        "--technique", action="append",
+        help="technique to test, repeatable (default: all). "
+             "one of: direct, authority, roleplay, urgency, data_smuggle, "
+             "polite_indirect, obfuscation",
+    )
+    rt.add_argument("--workers", type=int, help="parallel techniques (default 4 scripted, 1 live)")
+    rt.set_defaults(func=_run_redteam)
 
     serve = sub.add_parser(
         "serve",
