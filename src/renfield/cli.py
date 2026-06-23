@@ -148,6 +148,16 @@ def _run_verify(args: argparse.Namespace) -> int:
     return 1 if proven else 0
 
 
+def _emit(text: str, out: str | None, fmt: str) -> None:
+    """Write rendered output to a file (with a stderr note) or stdout."""
+    if out:
+        with open(out, "w") as f:
+            f.write(text)
+        print(f"wrote {fmt} -> {out}", file=sys.stderr)
+    else:
+        print(text)
+
+
 def _spec_driver(spec, args):
     """'scripted' | 'ollama:qwen2.5:7b' | 'openai:gpt-4o' -> a driver instance."""
     if spec == "scripted":
@@ -188,7 +198,11 @@ def _run_compare(args: argparse.Namespace) -> int:
                 classes.append(verdict.attack_class)
         rows.append({"label": spec, "total": len(criticals), "pwned": len(classes),
                      "classes": sorted(set(classes))})
-    print(render_leaderboard(rows))
+    if getattr(args, "format", "text") == "html":
+        from .outputs import leaderboard_to_html
+        _emit(leaderboard_to_html(rows), getattr(args, "out", None), "html")
+    else:
+        print(render_leaderboard(rows))
     return 1 if any(r["pwned"] for r in rows) else 0
 
 
@@ -213,7 +227,11 @@ def _run_compare_matrix(args, servers, criticals, specs) -> int:
             rt = redteam_chain(chain, servers, driver=driver, techniques=techs, workers=1)
             bypass |= set(rt.bypassed)
         rows.append({"label": spec, "bypass": bypass})
-    print(render_technique_matrix(rows, names))
+    if getattr(args, "format", "text") == "html":
+        from .outputs import matrix_to_html
+        _emit(matrix_to_html(rows, names), getattr(args, "out", None), "html")
+    else:
+        print(render_technique_matrix(rows, names))
     return 1 if any(r["bypass"] for r in rows) else 0
 
 
@@ -315,21 +333,37 @@ def _run_audit(args: argparse.Namespace) -> int:
     servers = _prepare(args.config, None, live=True)  # one enumeration, reused below
     chains = build_chains(servers)
     criticals = [c for c in chains if c.severity == "CRITICAL"][: args.max]
+    fmt = getattr(args, "format", "text")
 
+    if criticals:
+        driver = _make_driver(args)
+        verdicts = [verify_chain(c, servers, driver=driver) for c in criticals]
+    else:
+        verdicts = []
+    proven = sum(1 for v in verdicts if v.exploited)
+
+    # machine-readable / shareable output (json, sarif, html)
+    if fmt in ("json", "sarif", "html"):
+        from .outputs import render as render_out
+        text = render_out(verdicts, args.config, fmt)
+        if getattr(args, "out", None):
+            with open(args.out, "w") as f:
+                f.write(text)
+            print(f"wrote {fmt} ({proven} finding(s)) -> {args.out}", file=sys.stderr)
+        else:
+            print(text)
+        return 1 if proven else 0
+
+    # human-readable text
     print(render(servers, [c for c in chains if c.severity == "CRITICAL"], mode="live"))
-
     if not criticals:
         print("\nNo CRITICAL cross-server chains — nothing to prove or fix.")
         return 0
 
     print("\nPROVING each critical chain by a real side effect...\n")
-    driver = _make_driver(args)
-    proven = 0
-    for chain in criticals:
-        v = verify_chain(chain, servers, driver=driver)
-        proven += int(v.exploited)
+    for v in verdicts:
         tag = f"[PROVEN] [{v.attack_class}]" if v.exploited else "[NOT PROVEN]"
-        print(f"  {tag}  {_safe(chain.hops())}")
+        print(f"  {tag}  {_safe(v.chain.hops())}")
         print(f"          oracle: {_safe(v.evidence) or '—'}")
     print(f"\n  {proven}/{len(criticals)} chains PROVEN by real side effect.\n")
 
@@ -495,6 +529,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--technique", action="append",
         help="restrict the --matrix technique columns (repeatable; default all)",
     )
+    cmp.add_argument(
+        "--format", choices=["text", "html"], default="text",
+        help="output format. html -> a shareable leaderboard / matrix report",
+    )
+    cmp.add_argument("-o", "--out", help="write html to this file")
     cmp.set_defaults(func=_run_compare)
 
     rem = sub.add_parser(
@@ -534,6 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--patch", nargs="?", const="-", metavar="OUTFILE",
         help="also emit the FIXED MCP config + diff; pass a path or omit for <config>.fixed.json",
     )
+    audit.add_argument(
+        "--format", choices=["text", "json", "sarif", "html"], default="text",
+        help="output format. html -> a shareable evidence report with the taint trace",
+    )
+    audit.add_argument("-o", "--out", help="write json/sarif/html to this file")
     audit.set_defaults(func=_run_audit)
 
     rt = sub.add_parser(

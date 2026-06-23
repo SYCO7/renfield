@@ -3,6 +3,14 @@
 All notable changes to Renfield. Versions follow the roadmap in the README.
 The PyPI distribution is `renfield-mcp`; the CLI is `ren`.
 
+## [1.4.0]
+- **HTML reports for `audit` and `compare`** — `ren audit --format html` and
+  `ren compare --format html` (leaderboard *and* `--matrix`) emit self-contained,
+  dependency-free reports (matching `verify --format html`).
+- **Taint + tool-call trace in the HTML** — proven findings now render the full
+  tool-call trace and the multi-hop taint path, with relay (laundering) hops
+  highlighted — so you can see *how* the data flowed, not just that it leaked.
+
 ## [1.3.0]
 - **Multi-hop taint tracking** — taint is followed through *arbitrary intermediate
   tool results*, not just the fixed source → sensitive → sink shape. Detects taint
