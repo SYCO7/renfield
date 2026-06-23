@@ -23,10 +23,10 @@ done
 
 B="\033[1m"; R="\033[31m"; G="\033[32m"; C="\033[36m"; Z="\033[0m"
 banner() { printf "\n${B}${C}========== %s ==========${Z}\n\n" "$1"; }
-pause()  { [ "$AUTO" = "1" ] && return 0; printf "\n${B}-- press Enter --${Z}"; read -r _; }
+pause()  { [ "$AUTO" = "1" ] && return 0; [ -t 0 ] || return 0; printf "\n${B}-- press Enter --${Z}"; read -r _; }
 run()    { printf "${G}\$ %s${Z}\n" "$*"; "$@"; }
 
-clear
+[ -t 1 ] && [ -n "${TERM:-}" ] && clear 2>/dev/null || true
 printf "${B}${R}Renfield - penetration testing for AI agents${Z}\n"
 printf "Does your agent say *yes* to attackers? Let's prove it.\n"
 pause
