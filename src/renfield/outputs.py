@@ -55,10 +55,27 @@ def verdicts_to_json(verdicts, config_path: str) -> dict:
                 "servers": v.chain.servers,
                 "owasp": v.chain.owasp,
                 "evidence": v.evidence,
+                "provenance": _provenance_json(v),
                 "error": v.error or None,
             }
             for v in verdicts
         ],
+    }
+
+
+def _provenance_json(v) -> dict | None:
+    p = getattr(v, "provenance", None)
+    if p is None:
+        return None
+    return {
+        "taint_path": p.path(),
+        "tainted": p.tainted,
+        "source_ingested": p.source_ingested,
+        "secret_read": p.secret_read,
+        "secret_at_sink": p.secret_at_sink,
+        "causal_order": p.causal_order,
+        "causally_attributed": p.causally_attributed,
+        "causality_note": p.causality_note or None,
     }
 
 
