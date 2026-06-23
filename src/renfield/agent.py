@@ -47,6 +47,18 @@ class AgentDriver(Protocol):
 ATTACKER_CLIENT = "attacker-app"
 
 
+def _destructive_args(schema: dict, victim_path: str) -> dict:
+    """Point a destructive tool (delete/overwrite/...) at the sandbox victim file."""
+    props = (schema or {}).get("properties", {})
+    if not props:
+        return {"path": victim_path}
+    args: dict = {}
+    for name in props:
+        n = name.lower()
+        args[name] = victim_path if n in ("path", "file", "target", "filename") else ""
+    return args
+
+
 def _sink_args(schema: dict, secret: str) -> dict:
     """Build attacker-favourable args for any sink tool from its input schema."""
     props = (schema or {}).get("properties", {})
@@ -83,6 +95,14 @@ class ScriptedAgent:
         src = clients[chain.source.server]
         msg = call_text(src.call_tool(chain.source.name, {}))
         trace.append({"step": "source", "tool": chain.source.ref, "observed": msg})
+
+        # destructive chains have no sensitive-read hop — the harm is the deletion
+        if getattr(chain, "kind", "exfil") == "destructive":
+            sink = clients[chain.sink.server]
+            out = call_text(sink.call_tool(
+                chain.sink.name, _destructive_args(chain.sink.schema, sandbox.victim_relpath)))
+            trace.append({"step": "sink", "tool": chain.sink.ref, "observed": out})
+            return trace
 
         # 2. the confused-deputy hop: use a *different* trusted tool to read secrets
         if chain.sensitive is not None:

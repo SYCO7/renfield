@@ -12,6 +12,7 @@ class Capability(str, Enum):
     UNTRUSTED_SOURCE = "untrusted-source"  # pulls in attacker-influenceable data
     SENSITIVE_READ = "sensitive-read"      # reads secrets / private data
     EXTERNAL_SINK = "external-sink"        # can push data off the box
+    DESTRUCTIVE_SINK = "destructive-sink"  # can delete / overwrite / destroy data
     BENIGN = "benign"
 
 
@@ -34,6 +35,7 @@ class Tool:
             Capability.UNTRUSTED_SOURCE,
             Capability.SENSITIVE_READ,
             Capability.EXTERNAL_SINK,
+            Capability.DESTRUCTIVE_SINK,
         ]
         return ", ".join(c.value for c in order if c in self.capabilities)
 
@@ -59,6 +61,7 @@ class ToxicChain:
     severity: str          # CRITICAL / HIGH / MEDIUM / LOW
     owasp: list[str]
     rationale: str
+    kind: str = "exfil"    # "exfil" (data leaves) | "destructive" (data destroyed)
 
     def hops(self) -> str:
         mids = [self.sensitive.ref] if self.sensitive else []

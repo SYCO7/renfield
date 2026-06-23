@@ -138,6 +138,7 @@ ren verify examples/vuln_lab_config.json --driver openai \
 # 4. COMPARE models head-to-head — who leaks your secrets?
 ren compare examples/vuln_lab_config.json \
     --with ollama:qwen2.5:7b --with openai:gpt-4o
+#    add --matrix for a model × injection-technique robustness grid
 
 # 5. REMEDIATE — smallest set of capabilities to remove that kills EVERY chain
 ren remediate examples/vuln_lab_config.json
@@ -230,6 +231,7 @@ Machine-readable output for any pipeline:
 ```bash
 ren verify my-agent.json --format json   -o renfield.json    # CI / dashboards
 ren verify my-agent.json --format sarif  -o renfield.sarif   # GitHub code scanning
+ren verify my-agent.json --format html   -o renfield.html    # shareable evidence report
 ```
 
 ## The LLM susceptibility test — bring your own model
@@ -354,6 +356,11 @@ Claude Code, Cursor, Cline, Windsurf, Continue, VS Code, Zed — any MCP client.
 | **Data Exfiltration** | email / file | canary secret observed in the egress sink |
 | **Network Exfiltration** | HTTP POST | canary observed in an **outbound request** to a live listener — data physically left the box |
 | **OAuth-Consent Confused Deputy** | consent grant | agent used its own authority to approve an attacker app's OAuth consent |
+| **Destructive Action** | delete / overwrite | attacker content steered the agent to destroy data — proven by the integrity-target file being gone |
+
+Plus a purely-static finding that needs no execution — **tool shadowing**: when two
+servers expose the same tool name, a colliding server can intercept calls meant for
+the trusted one. Surfaced in `ren scan` and the `renfield_scan` MCP tool.
 
 ## Taint / provenance — *why* it leaked, and who's to blame
 
@@ -415,7 +422,11 @@ confused-deputy stacks above. Self-contained, offline, safe.
   and `verify --causality` runs a benign control to attribute the leak to the
   untrusted source (leak only under injection ⇒ caused by it). Surfaced in text,
   JSON, and the MCP findings.
-- **v1.1 — HTML report** (planned).
+- **v1.1 — wider coverage + shareable report** *(done)*: a **Destructive Action**
+  attack class (proven by integrity loss), static **tool-shadowing** detection,
+  a **model × injection-technique** robustness grid (`compare --matrix`), and a
+  self-contained **HTML evidence report** (`verify --format html`).
+- **v1.2 — credential/token-reuse class + taint over multi-hop tool results** (planned).
 
 ## Ethics / legal
 

@@ -12,4 +12,4 @@ Pipeline: config ingest -> live MCP enumeration -> capability graph -> candidate
 chains -> dynamic verification (sandbox + side-effect oracle) -> report.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
